@@ -17,7 +17,7 @@ See `OUTPUT_COLS` in `foundinspace.pipeline.constants` for the full list.
 
 ## How it works
 
-Per-catalogue CLIs produce staging Parquet. The **merge** step (see `docs/mergers.md`) brings them together:
+Per-catalogue CLIs produce staging Parquet. The **merge** step (see `docs/merging.md`) brings them together:
 
 1. Run **Gaia** and **Hipparcos** pipelines on their respective inputs, and build the **Gaia↔HIP** mapping sidecar (`fis-pipeline gaia-to-hip build`; Hipparcos: `fis-pipeline hip build`).
 2. Run an **overrides pipeline** that normalises a versioned **manual overrides** table (e.g. missing objects like the Sun, or replacements where Hipparcos binary solutions are poor).
