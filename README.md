@@ -1,6 +1,6 @@
 # Found in Space — Pipeline
 
-Part of [Found in Space](https://foundin.space/), a project that turns real astronomical measurements into interactive explorations of the solar neighbourhood.
+Part of [Found in Space](https://foundin.space/), a project that turns real astronomical measurements into interactive explorations of the solar neighbourhood. See all repositories at [github.com/Found-in-Space](https://github.com/Found-in-Space).
 
 This repository is the **data pipeline**: it takes raw catalogue data from ESA's [Gaia](https://www.cosmos.esa.int/web/gaia) mission and the Hipparcos survey, applies astrometry and photometry selection, cross-matches and merges the catalogues, and outputs clean, positioned star records ready for visualisation or further analysis.
 
