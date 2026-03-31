@@ -43,10 +43,12 @@ default.
 With an apparent-magnitude cap the result set is small enough for a single
 query — no partitioning or batch planning needed.
 
-| Limit | Rows | Auth required? |
-|-------|------|----------------|
-| G ≤ 9 | 175,485 | No |
-| G ≤ 12 | 3,062,324 | Yes |
+| Limit  | Rows / Stars | Size  | Auth required? |
+|--------|--------------|-------|----------------|
+| G ≤ 9  |    175,485   |  16MB | No             |
+| G ≤ 12 |  3,062,324   | 277Mb | Yes            |
+| G ≤ 15 | 36,635,159   | 3.2Gb | Yes            |
+
 
 The Gaia Archive public API caps query results at ~3 million rows. G ≤ 12
 exceeds this, so a registered account is required (free; login via the
