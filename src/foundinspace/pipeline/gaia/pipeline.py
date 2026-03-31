@@ -16,7 +16,14 @@ import pyarrow.parquet as pq
 from votpipe import parse_votable
 
 from foundinspace.pipeline.common.coords import calculate_coordinates_fast
-from foundinspace.pipeline.constants import OUTPUT_COLS
+from foundinspace.pipeline.constants import (
+    DIST_SRC_MASK,
+    FLAG_DIST_VALID,
+    FLAG_NEEDS_REVIEW,
+    OUTPUT_COLS,
+    TEFF_SRC_MASK,
+    TEFF_SRC_SHIFT,
+)
 from foundinspace.pipeline.gaia.astrometry import select_astrometry_gaia
 from foundinspace.pipeline.gaia.photometry import (
     assign_photometry_gaia,
@@ -28,6 +35,57 @@ BATCH_SIZE = 1_000_000
 
 GAIA_AUXILIARY_COLS = ["ruwe", "phot_g_mean_mag"]
 GAIA_OUTPUT_COLS = OUTPUT_COLS + GAIA_AUXILIARY_COLS
+
+_DIST_SRC_LABELS = {
+    0x0: "unknown",
+    0x1: "DR3",
+    0x2: "BJ_geo",
+    0x3: "BJ_photogeo",
+    0x4: "HIP",
+    0x5: "DR3_weak",
+    0x6: "geo_weak",
+    0x7: "photogeo_weak",
+    0x8: "photo_MG_AG",
+    0x9: "prior",
+    0xA: "override",
+}
+
+_TEFF_SRC_LABELS = {
+    0x0: "default",
+    0x1: "ESP-HS",
+    0x2: "GSP-Spec",
+    0x3: "ESP-UCD",
+    0x4: "GSP-Phot",
+    0x5: "BP-RP",
+    0x6: "B-V",
+}
+
+
+def _print_quality_summary(dist_counts: dict[str, int], teff_counts: dict[str, int], total: int) -> None:
+    """Print a human-readable summary of distance and Teff source distributions."""
+    if total == 0:
+        return
+
+    print("\nQuality summary:")
+
+    dist_valid = int(dist_counts.get("dist_valid", 0))
+    needs_review = int(dist_counts.get("needs_review", 0))
+    print(f"  Distance valid: {dist_valid:,} ({100 * dist_valid / total:.1f}%)")
+    print(f"  Needs review:   {needs_review:,} ({100 * needs_review / total:.1f}%)")
+
+    parts = []
+    for code in sorted(_DIST_SRC_LABELS):
+        n = int(dist_counts.get(f"dist_{code}", 0))
+        if n > 0:
+            parts.append(f"{_DIST_SRC_LABELS[code]}={100 * n / total:.1f}%")
+    print(f"  Distance src:   {', '.join(parts)}")
+
+    parts = []
+    for code in sorted(_TEFF_SRC_LABELS):
+        n = int(teff_counts.get(f"teff_{code}", 0))
+        if n > 0:
+            parts.append(f"{_TEFF_SRC_LABELS[code]}={100 * n / total:.1f}%")
+    print(f"  Teff src:       {', '.join(parts)}")
 
 
 def _run_gaia_pipeline_batch(df: pd.DataFrame) -> pd.DataFrame:
@@ -52,6 +110,24 @@ def _run_gaia_pipeline_batch(df: pd.DataFrame) -> pd.DataFrame:
     return work[GAIA_OUTPUT_COLS]
 
 
+def _accumulate_quality_counts(
+    flags: np.ndarray, accum: dict[str, int],
+) -> None:
+    """Accumulate dist_src, teff_src, and status-bit counts from a batch of quality_flags."""
+    qf = flags.astype(np.uint16)
+
+    dist_src = qf & DIST_SRC_MASK
+    for code in _DIST_SRC_LABELS:
+        accum[f"dist_{code}"] = accum.get(f"dist_{code}", 0) + int(np.sum(dist_src == code))
+
+    teff_src = (qf & TEFF_SRC_MASK) >> TEFF_SRC_SHIFT
+    for code in _TEFF_SRC_LABELS:
+        accum[f"teff_{code}"] = accum.get(f"teff_{code}", 0) + int(np.sum(teff_src == code))
+
+    accum["dist_valid"] = accum.get("dist_valid", 0) + int(np.sum((qf & FLAG_DIST_VALID) != 0))
+    accum["needs_review"] = accum.get("needs_review", 0) + int(np.sum((qf & FLAG_NEEDS_REVIEW) != 0))
+
+
 def main(
     input_path: Path,
     output_path: Path,
@@ -74,6 +150,7 @@ def main(
     writer = None
     written_rows = 0
     batch_count = 0
+    quality_accum: dict[str, int] = {}
 
     def on_batch(fields: list, rows: list) -> None:
         nonlocal writer, written_rows, batch_count
@@ -93,6 +170,7 @@ def main(
         result = _run_gaia_pipeline_batch(df)
         if len(result) == 0:
             return
+        _accumulate_quality_counts(result["quality_flags"].to_numpy(), quality_accum)
         table = pa.Table.from_pandas(result, preserve_index=False)
         if writer is None:
             writer = pq.ParquetWriter(
@@ -113,3 +191,4 @@ def main(
         if writer is not None:
             writer.close()
     print(f"Done. Wrote {written_rows:,} rows to {output_path}")
+    _print_quality_summary(quality_accum, quality_accum, written_rows)
