@@ -5,8 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "found-in-space-pipeline"
 version = "0.1.0"
-description = "Add your description here"
+description = "Gaia + Hipparcos data pipeline for 3D star maps — astrometry, photometry, cross-match merging, and sun-centric Cartesian output."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
     "astroquery>=0.4.10",
@@ -20,6 +21,10 @@ dependencies = [
     "pyyaml>=6.0.3",
     "tqdm>=4.67.3",
 ]
+
+[project.urls]
+Homepage = "https://foundin.space/"
+Repository = "https://github.com/Found-in-Space/pipeline"
 
 [project.scripts]
 fis-pipeline = "foundinspace.pipeline.cli:cli"

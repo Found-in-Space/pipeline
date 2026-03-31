@@ -1,34 +1,29 @@
-# Found in Space - Pipeline
+# Found in Space — Pipeline
 
-A pipeline for reducing **Gaia** and **Hipparcos** data to produce a 3D map of stars. It ingests catalogue data (VOTables), applies astrometry and photometry selection, propagates positions to a common epoch, and outputs **sun-centric Cartesian coordinates** (ICRS, in parsecs) plus derived quantities suitable for visualization or further processing.
+Part of [Found in Space](https://foundin.space/), a project that turns real astronomical measurements into interactive explorations of the solar neighbourhood.
+
+This repository is the **data pipeline**: it takes raw catalogue data from ESA's [Gaia](https://www.cosmos.esa.int/web/gaia) mission and the Hipparcos survey, applies astrometry and photometry selection, cross-matches and merges the catalogues, and outputs clean, positioned star records ready for visualisation or further analysis.
 
 ## Output
 
-The pipeline produces Parquet tables with a fixed schema. Each row is a star with:
+The pipeline produces compressed Parquet tables with a fixed schema. Each row is a star with:
 
 - **Sun-centric Cartesian coordinates** (ICRS frame, J2016.0): `x_icrs_pc`, `y_icrs_pc`, `z_icrs_pc` (parsecs). The origin is the Sun; axes follow the ICRS convention.
 - **Identifiers and source**: `source` (e.g. `"gaia"` or `"hip"`), `source_id`.
 - **Photometry**: `mag_abs` (absolute magnitude), `teff` (effective temperature, K), `photometry_quality` (magnitude uncertainty).
 - **Provenance and quality**: `quality_flags` (packed uint16: distance source, Teff source, photometry source, validity and review bits), `astrometry_quality` (e.g. fractional parallax error or Bailer-Jones interval width; finite, no inf).
 
-**Morton codes and octree statistics are not produced here**; they belong in a downstream indexer. That stage can shard the merged catalog by **2D sky tiles** (e.g. HEALPix) first so 3D structures do not require scanning every file in the dataset.
-
 See `OUTPUT_COLS` in `foundinspace.pipeline.constants` for the full list.
 
-## End-to-end plan (Gaia + Hipparcos + merge)
+## How it works
 
-Per-catalog CLIs produce staging Parquet. The **merge** step (see `docs/mergers.md`) will:
+Per-catalogue CLIs produce staging Parquet. The **merge** step (see `docs/mergers.md`) brings them together:
 
 1. Run **Gaia** and **Hipparcos** pipelines on their respective inputs, and build the **Gaia↔HIP** mapping sidecar (`fis-pipeline gaia-to-hip build`; Hipparcos: `fis-pipeline hip build`).
-2. Run an **overrides pipeline** that normalizes a versioned **manual overrides** table (e.g. missing objects like the Sun, or replacements where Hipparcos binary solutions are poor).
+2. Run an **overrides pipeline** that normalises a versioned **manual overrides** table (e.g. missing objects like the Sun, or replacements where Hipparcos binary solutions are poor).
 3. **Merge** using a cross-match table, quality scoring for Gaia-vs-Hip pairs, with **manual overrides taking precedence** over automatic winners.
-4. Emit a **dense** merged table suitable for Stage 00, partitioned by **HEALPix** for efficient downstream octree or spatial queries.
+4. Emit a **dense** merged table, partitioned by **HEALPix**, containing one canonical row per star.
 5. Emit **sparse sidecars** (identifiers, HD/Bayer designations, merge decisions) keyed by canonical `(source, source_id)`, so rare columns are not duplicated on every row.
-
-### Documentation ownership boundary
-
-- This repository owns merger policy and merged artifact semantics (`docs/mergers.md`).
-- The octree repository owns Stage 00/01/02 build contracts and `.octree` reader/writer format details.
 
 ## Installation
 
@@ -136,8 +131,6 @@ src/foundinspace/
       pipeline.py      # YAML → overrides.parquet for merger
 ```
 
-Hipparcos pipeline is available via `fis-pipeline hip build`.
-
 ## Key functions
 
 - **`calculate_coordinates`** / **`calculate_coordinates_fast`** (`common.coords`) — Propagate ICRS positions to J2016.0 and add `x_icrs_pc`, `y_icrs_pc`, `z_icrs_pc`, `ra_deg`, `dec_deg`, `r_pc`. The fast version uses pure NumPy (no Astropy) and assumes no radial velocity.
@@ -147,7 +140,7 @@ Hipparcos pipeline is available via `fis-pipeline hip build`.
 ## Tests
 
 ```bash
-pytest
+uv run pytest
 ```
 
 Tests live under `tests/` (e.g. `tests/common/test_coords.py` for coordinate propagation).
