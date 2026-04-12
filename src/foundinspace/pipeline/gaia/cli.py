@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from foundinspace.pipeline.gaia import download
 from foundinspace.pipeline.gaia.pipeline import main
 from foundinspace.pipeline.project import PipelineProject, load_project
 
@@ -9,6 +10,9 @@ from foundinspace.pipeline.project import PipelineProject, load_project
 @click.group(name="gaia")
 def cli():
     pass
+
+
+cli.add_command(download.main, name="download")
 
 
 def _load_project_or_die(project_path: Path, *required: str) -> PipelineProject:
