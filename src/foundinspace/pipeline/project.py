@@ -9,7 +9,18 @@ import tomllib
 
 FORMAT_VERSION = 1
 
-_GAIA_KEYS = {"output_dir", "mag_limit"}
+_GAIA_KEYS = {
+    "output_dir",
+    "mag_limit",
+    "download_counts_csv",
+    "download_plan_csv",
+    "download_manifest_yaml",
+    "download_votable_dir",
+    "target_rows_per_batch",
+    "max_archive_inflight_queries",
+    "max_concurrent_downloads",
+    "poll_interval_seconds",
+}
 _GAIA_TO_HIP_KEYS = {"download_ecsv", "output_parquet"}
 _HIP_KEYS = {"download_ecsv", "output_parquet"}
 _IDENTIFIERS_KEYS = {
@@ -113,6 +124,52 @@ class GaiaConfig(_SectionAccessor):
     @property
     def mag_limit(self) -> float | None:
         return self._optional_float_field("mag_limit")
+
+    @property
+    def download_counts_csv(self) -> Path:
+        return self._require_path("download_counts_csv")
+
+    @property
+    def download_plan_csv(self) -> Path:
+        return self._require_path("download_plan_csv")
+
+    @property
+    def download_manifest_yaml(self) -> Path:
+        return self._require_path("download_manifest_yaml")
+
+    @property
+    def download_votable_dir(self) -> Path:
+        return self._require_path("download_votable_dir")
+
+    @property
+    def target_rows_per_batch(self) -> int:
+        value = self._require_int_field("target_rows_per_batch")
+        if value <= 0:
+            raise ValueError("gaia.target_rows_per_batch must be > 0")
+        return value
+
+    @property
+    def max_archive_inflight_queries(self) -> int:
+        value = self._require_int_field("max_archive_inflight_queries")
+        if value <= 0:
+            raise ValueError("gaia.max_archive_inflight_queries must be > 0")
+        return value
+
+    @property
+    def max_concurrent_downloads(self) -> int:
+        value = self._require_int_field("max_concurrent_downloads")
+        if value <= 0:
+            raise ValueError("gaia.max_concurrent_downloads must be > 0")
+        return value
+
+    @property
+    def poll_interval_seconds(self) -> float:
+        value = self._optional_float_field("poll_interval_seconds")
+        if value is None:
+            return 10.0
+        if value <= 0:
+            raise ValueError("gaia.poll_interval_seconds must be > 0")
+        return value
 
 
 class GaiaToHipConfig(_SectionAccessor):
@@ -266,7 +323,15 @@ def render_project_template() -> str:
         f"format_version = {FORMAT_VERSION}\n\n"
         "[gaia]\n"
         'output_dir = "data/processed/gaia"\n'
-        "# mag_limit = 15.0\n\n"
+        "# mag_limit = 15.0\n"
+        'download_counts_csv = "data/catalogs/gaia_l3_counts.csv"\n'
+        'download_plan_csv = "data/catalogs/gaia_batch_plan.csv"\n'
+        'download_manifest_yaml = "data/catalogs/gaia_download_manifest.yaml"\n'
+        'download_votable_dir = "data/catalogs/gaia_batches"\n'
+        "target_rows_per_batch = 55000000\n"
+        "max_archive_inflight_queries = 2\n"
+        "max_concurrent_downloads = 2\n"
+        "poll_interval_seconds = 10\n\n"
         "[gaia-to-hip]\n"
         'download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"\n'
         'output_parquet = "data/processed/gaia_hip_map.parquet"\n\n'
