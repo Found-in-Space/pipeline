@@ -50,6 +50,32 @@ Entry point: **`fis-pipeline`** (or `python -m foundinspace.pipeline`).
 | `fis-pipeline identifiers download --project PROJECT` | Only download identifier source catalogs (`I/239/hip_main`, `IV/27A/catalog`, `IV/27A/table3`) to ECSV targets in `[identifiers]`. |
 | `fis-pipeline overrides build --project PROJECT` | Build merger-ready overrides Parquet from YAML (`OUTPUT_COLS` + override metadata) and write to `[overrides] output_parquet`. |
 | `fis-pipeline merge build --project PROJECT` | Stream-merge Gaia + Hipparcos + crossmatch + overrides into HEALPix-partitioned Parquet under `[merge] output_dir/healpix/{pixel}/`, and write `merge_report.json` plus `merge_decisions.parquet`. Reads from `[gaia]`, `[hip]`, `[gaia-to-hip]`, `[overrides]`, and `[merge]` sections. |
+| `fis-pipeline coords convert [--input COORDS.csv]` | Convert ad hoc RA/Dec/distance/proper-motion rows to project ICRS Cartesian coordinates at J2016.0, plus the viewer `teffLog8` byte. |
+
+### Ad hoc coordinate conversion
+
+For one-off objects, `coords convert` accepts either single-row flags or a CSV.
+The output coordinates use the same Sun-centred ICRS parsec convention as the
+main pipeline. Sexagesimal RA/Dec are accepted; `pmra_masyr` is `pmRA*`.
+
+```bash
+uv run fis-pipeline coords convert \
+  --name "Example" \
+  --ra "08 55 10.8317" \
+  --dec "-07 14 42.53" \
+  --epoch-yr 2000.0 \
+  --pmra-masyr -8118.9 \
+  --pmdec-masyr 679.3 \
+  --parallax-mas 439.0 \
+  --teff-k 250 \
+  --format viewer-json
+```
+
+CSV input can use columns such as `name`, `ra`, `dec`, `epoch_yr`,
+`pmra_masyr`/`pmRA*`, `pmdec_masyr`, `distance_pc` or `parallax_mas`, and
+`teff_k`. The `viewer-json` format emits `positionPc` and `teffLog8` records for
+dynamic viewer insertion. The current octree/viewer temperature byte represents
+2000-50000 K; colder temperatures are emitted as the sentinel byte `255`.
 
 ### Project configuration
 
@@ -100,12 +126,14 @@ Result columns are trimmed to `OUTPUT_COLS` and written as compressed Parquet (z
 ```
 src/foundinspace/
   pipeline/
-    cli.py              # Click root; lazy subcommands "gaia", "gaia-to-hip", "hip", "identifiers", "merge", "overrides", "project"
+    cli.py              # Click root; lazy subcommands "coords", "gaia", "gaia-to-hip", "hip", "identifiers", "merge", "overrides", "project"
     constants.py        # OUTPUT_COLS, quality_flags (DIST_SRC_*, TEFF_SRC_*, PHOT_SRC_*, FLAG_*), qf_* accessors
+    coordinate_converter.py # ad hoc RA/Dec/proper-motion rows → project coordinates + teffLog8
+    coords_cli.py       # coords convert
     __main__.py         # python -m entry
     common/
       coords.py         # calculate_coordinates, calculate_coordinates_fast (ICRS → x,y,z at J2016.0)
-      photometry.py     # teff_to_rgb, teff_to_hex, bv_to_teff, bp_rp_to_teff
+      photometry.py     # teff_to_rgb, teff_to_hex, encode_teff_log8, bv_to_teff, bp_rp_to_teff
     gaia/
       cli.py            # gaia build
       pipeline.py      # Stream VOTable → batches → Parquet (main)
@@ -134,6 +162,7 @@ src/foundinspace/
 ## Key functions
 
 - **`calculate_coordinates`** / **`calculate_coordinates_fast`** (`common.coords`) — Propagate ICRS positions to J2016.0 and add `x_icrs_pc`, `y_icrs_pc`, `z_icrs_pc`, `ra_deg`, `dec_deg`, `r_pc`. The fast version uses pure NumPy (no Astropy) and assumes no radial velocity.
+- **`convert_coordinate_table`** (`coordinate_converter`) — Convert ad hoc rows with RA/Dec, distance/parallax, optional proper motion, source epoch, and Teff into project coordinates plus viewer `teff_log8`.
 - **`select_astrometry_gaia`** (`gaia.astrometry`) — Four-tier distance selection (primary → weak catalog → photometric → synthetic prior) with `quality_flags` (uint16) and finite `astrometry_quality`; populates `distance_use_pc` and all `*_use_*` astrometry columns.
 - **`assign_photometry_gaia`** / **`compute_mag_abs_gaia`** / **`compute_teff_gaia`** (`gaia.photometry`) — Gaia G mag, absolute magnitude cascade, and Teff cascade (spectroscopic → BP–RP → B–V → 5800 K default).
 

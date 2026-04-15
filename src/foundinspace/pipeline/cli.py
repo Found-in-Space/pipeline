@@ -23,6 +23,7 @@ class LazyGroup(click.Group):
 @click.group(
     cls=LazyGroup,
     lazy_subcommands={
+        "coords": "foundinspace.pipeline.coords_cli:cli",
         "project": "foundinspace.pipeline.project_cli:cli",
         "gaia": "foundinspace.pipeline.gaia.cli:cli",
         "gaia-to-hip": "foundinspace.pipeline.gaia_to_hip.cli:cli",

@@ -4,6 +4,10 @@ import numpy as np
 
 from foundinspace.pipeline.constants import TEFF_MAX_K, TEFF_MIN_K
 
+TEFF_LOG8_MIN_K = 2000.0
+TEFF_LOG8_MAX_K = 50000.0
+TEFF_LOG8_SENTINEL = 255
+
 
 def teff_to_rgb(teff_k: float | np.ndarray) -> tuple[float, float, float] | np.ndarray:
     """
@@ -70,6 +74,26 @@ def teff_to_hex(teff_k: float | np.ndarray) -> str | np.ndarray:
     return np.array(
         [f"#{int(r):02x}{int(g):02x}{int(b):02x}" for r, g, b in rgb.astype(int)]
     )
+
+
+def encode_teff_log8(teff_k: float | np.ndarray) -> int | np.ndarray:
+    """Encode effective temperature (K) to the viewer/octree 8-bit log scale.
+
+    Valid temperatures in the viewer payload are represented on a logarithmic
+    scale from 2000 K to 50000 K. Invalid, non-finite, or out-of-range values
+    use byte 255 as the viewer's "unknown/default" sentinel.
+    """
+    t = np.atleast_1d(np.asarray(teff_k, dtype=float))
+    valid = np.isfinite(t) & (t >= TEFF_LOG8_MIN_K) & (t <= TEFF_LOG8_MAX_K)
+    finite_t = np.where(np.isfinite(t), t, TEFF_LOG8_MIN_K)
+    log_t = np.log10(np.clip(finite_t, TEFF_LOG8_MIN_K, TEFF_LOG8_MAX_K))
+    log_lo = np.log10(TEFF_LOG8_MIN_K)
+    log_hi = np.log10(TEFF_LOG8_MAX_K)
+    encoded = np.floor(255.0 * (log_t - log_lo) / (log_hi - log_lo)).astype(np.uint8)
+    out = np.where(valid, np.clip(encoded, 0, 254), TEFF_LOG8_SENTINEL).astype(np.uint8)
+    if np.isscalar(teff_k):
+        return int(out[0])
+    return out
 
 
 def bv_to_teff(bv: float | np.ndarray) -> float | np.ndarray:
