@@ -116,6 +116,13 @@ Overrides correct or supplement catalog data where automation is wrong or incomp
 - **Missing objects** — e.g. the Sun, or other bodies not represented as normal catalog rows.
 - **Poor binary / composite solutions** — e.g. Hipparcos parameters for some resolved binaries; curated astrometry/photometry replaces the catalog row.
 
+Open override candidates:
+
+- TODO: create a catalogue override record for HIP 90910. It currently appears in
+  `stars.octree` as a K5 star with absolute magnitude `-12.56` at level 2, so
+  the source distance/parallax is likely unreasonable and should be corrected
+  before octree enrichment.
+
 Each override row should carry at least:
 
 - `override_id` (stable string or integer)
