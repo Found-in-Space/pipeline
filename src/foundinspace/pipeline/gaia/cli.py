@@ -5,6 +5,8 @@ import click
 from foundinspace.pipeline.gaia.pipeline import main
 from foundinspace.pipeline.project import load_project
 
+_VOT_SUFFIXES = {".vot", ".vot.gz", ".vot.xz"}
+
 
 @click.group(name="gaia")
 def cli():
@@ -18,6 +20,11 @@ def _load_project_or_die(project_path: Path):
         raise click.ClickException(str(exc)) from exc
 
 
+def _is_votable(path: Path) -> bool:
+    name = path.name.lower()
+    return any(name.endswith(s) for s in _VOT_SUFFIXES)
+
+
 @cli.command(name="build")
 @click.option(
     "--project",
@@ -26,22 +33,20 @@ def _load_project_or_die(project_path: Path):
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Path to pipeline project TOML.",
 )
-@click.argument(
-    "input_files",
-    nargs=-1,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
 @click.option("--force", "-f", is_flag=True, default=False)
 def build_gaia(
     project_path: Path,
-    input_files: list[Path],
     force: bool = False,
 ):
-    if len(input_files) == 0:
-        click.echo("No input files provided")
-        return
-
     project = _load_project_or_die(project_path)
+    input_dir = project.gaia.input_dir
+    if not input_dir.is_dir():
+        raise click.ClickException(f"[gaia] input_dir does not exist: {input_dir}")
+
+    input_files = sorted(p for p in input_dir.iterdir() if p.is_file() and _is_votable(p))
+    if not input_files:
+        raise click.ClickException(f"No VOTable files found in {input_dir}")
+
     output_root = project.gaia.output_dir
     output_root.mkdir(parents=True, exist_ok=True)
 

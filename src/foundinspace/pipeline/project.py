@@ -12,7 +12,7 @@ FORMAT_VERSION = 1
 _SECTION_NAMES = {"gaia", "gaia-to-hip", "hip", "identifiers", "overrides", "merge"}
 _TOP_LEVEL_KEYS = {"format_version"} | _SECTION_NAMES
 
-_GAIA_KEYS = {"output_dir", "mag_limit"}
+_GAIA_KEYS = {"input_dir", "output_dir", "mag_limit"}
 _GAIA_TO_HIP_KEYS = {"download_ecsv", "output_parquet"}
 _HIP_KEYS = {"download_ecsv", "output_parquet"}
 _IDENTIFIERS_KEYS = {
@@ -96,6 +96,10 @@ class _SectionAccessor:
 
 
 class GaiaConfig(_SectionAccessor):
+    @property
+    def input_dir(self) -> Path:
+        return self._require_path("input_dir")
+
     @property
     def output_dir(self) -> Path:
         return self._require_path("output_dir")
@@ -231,6 +235,7 @@ def render_project_template() -> str:
     return (
         f"format_version = {FORMAT_VERSION}\n\n"
         "[gaia]\n"
+        'input_dir = "data/catalogs/gaia"\n'
         'output_dir = "data/processed/gaia"\n'
         '# mag_limit = 15.0\n\n'
         "[gaia-to-hip]\n"

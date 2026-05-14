@@ -46,7 +46,7 @@ Entry point: **`fis-pipeline`** (or `python -m foundinspace.pipeline`).
 
 | Command | Description |
 |--------|--------------|
-| `fis-pipeline gaia build --project PROJECT INPUT [INPUT ...]` | Read Gaia VOTable(s) (`.vot`, `.vot.gz`, `.vot.xz`), run the Gaia pipeline per batch, and write `{stem}.parquet` into `[gaia] output_dir`. Optional `[gaia] mag_limit` filters to `phot_g_mean_mag <= mag_limit`. |
+| `fis-pipeline gaia build --project PROJECT` | Read all VOTable files (`.vot`, `.vot.gz`, `.vot.xz`) from `[gaia] input_dir`, run the Gaia pipeline per batch, and write `{stem}.parquet` into `[gaia] output_dir`. Optional `[gaia] mag_limit` filters to `phot_g_mean_mag <= mag_limit`. |
 | `fis-pipeline gaia-to-hip build --project PROJECT` | Download `gaiadr3.hipparcos2_best_neighbour` (skip if cached) and write `[gaia-to-hip] output_parquet` (Gaia↔HIP sidecar for the merger). |
 | `fis-pipeline gaia-to-hip download --project PROJECT` | Only download `gaiadr3.hipparcos2_best_neighbour` into `[gaia-to-hip] download_ecsv`. |
 | `fis-pipeline hip build --project PROJECT` | Download Hipparcos New Reduction catalog (skip if cached) and write to `[hip] output_parquet`. |
