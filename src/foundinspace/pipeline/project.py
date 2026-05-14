@@ -8,6 +8,7 @@ from typing import Any
 import tomllib
 
 FORMAT_VERSION = 1
+PROJECT_PROFILES = ("full", "small")
 
 _SECTION_NAMES = {"gaia", "gaia-to-hip", "hip", "identifiers", "overrides", "merge"}
 _TOP_LEVEL_KEYS = {"format_version"} | _SECTION_NAMES
@@ -231,7 +232,7 @@ def load_project(project_path: Path) -> PipelineProject:
     )
 
 
-def render_project_template() -> str:
+def _render_full_project_template() -> str:
     return (
         f"format_version = {FORMAT_VERSION}\n\n"
         "[gaia]\n"
@@ -255,4 +256,42 @@ def render_project_template() -> str:
         "[merge]\n"
         'output_dir = "data/processed/merged"\n'
         "healpix_order = 3\n"
+    )
+
+
+def _render_small_project_template() -> str:
+    return (
+        f"format_version = {FORMAT_VERSION}\n\n"
+        "[gaia]\n"
+        'input_dir = "data/catalogs/gaia-small"\n'
+        'output_dir = "data/processed/gaia-small"\n'
+        "mag_limit = 8.0\n\n"
+        "[gaia-to-hip]\n"
+        'download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"\n'
+        'output_parquet = "data/processed/gaia_hip_map.parquet"\n\n'
+        "[hip]\n"
+        'download_ecsv = "data/catalogs/hipparcos2.ecsv"\n'
+        'output_parquet = "data/processed/hip_stars.parquet"\n\n'
+        "[identifiers]\n"
+        'hip_hd_ecsv = "data/catalogs/hip_hd.ecsv"\n'
+        'iv27a_catalog_ecsv = "data/catalogs/iv27a_catalog.ecsv"\n'
+        'iv27a_proper_names_ecsv = "data/catalogs/iv27a_proper_names.ecsv"\n'
+        'output_parquet = "data/processed/identifiers_map.parquet"\n\n'
+        "[overrides]\n"
+        'output_parquet = "data/processed/overrides.parquet"\n'
+        '# data_dir = "path/to/overrides"\n\n'
+        "[merge]\n"
+        'output_dir = "data/processed/merged-small"\n'
+        "healpix_order = 3\n"
+    )
+
+
+def render_project_template(profile: str = "full") -> str:
+    profile_name = profile.strip().lower()
+    if profile_name == "full":
+        return _render_full_project_template()
+    if profile_name == "small":
+        return _render_small_project_template()
+    raise ValueError(
+        f"Unknown project profile {profile!r}; expected one of {', '.join(PROJECT_PROFILES)}"
     )

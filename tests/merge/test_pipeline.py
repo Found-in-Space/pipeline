@@ -10,12 +10,12 @@ import pyarrow.parquet as pq
 import pytest
 
 from foundinspace.pipeline.constants import OUTPUT_COLS
-from foundinspace.pipeline.merge.pipeline import (
+from foundinspace.pipeline.merge.pipeline import run_merge
+from foundinspace.pipeline.merge.policy import (
     _choose_matched_winner,
     _safe_float,
     _safe_int,
     _safe_score,
-    run_merge,
 )
 
 
@@ -422,10 +422,10 @@ def _gaia_row(score: float, *, phot_g_mean_mag: float | None = None, **kw) -> di
     return row
 
 
-def _hip_row(score: float, *, Sn: int | None = None, **kw) -> dict:
+def _hip_row(score: float, *, sn: int | None = None, **kw) -> dict:
     row: dict = {"astrometry_quality": score}
-    if Sn is not None:
-        row["Sn"] = Sn
+    if sn is not None:
+        row["Sn"] = sn
     row.update(kw)
     return row
 
@@ -436,21 +436,21 @@ class TestChooseMatchedWinnerV2:
     def test_gaia_wins_when_better(self):
         winner, reason = _choose_matched_winner(
             _gaia_row(0.05, phot_g_mean_mag=8.0),
-            _hip_row(0.10, Sn=5),
+            _hip_row(0.10, sn=5),
         )
         assert winner == "gaia"
 
     def test_gaia_wins_on_tie(self):
         winner, reason = _choose_matched_winner(
             _gaia_row(0.10, phot_g_mean_mag=8.0),
-            _hip_row(0.10, Sn=5),
+            _hip_row(0.10, sn=5),
         )
         assert winner == "gaia"
 
     def test_neighbour_veto_forces_gaia(self):
         winner, reason = _choose_matched_winner(
             _gaia_row(0.50, phot_g_mean_mag=8.0),
-            _hip_row(0.01, Sn=5),
+            _hip_row(0.01, sn=5),
             number_of_neighbours=3,
         )
         assert winner == "gaia"
@@ -459,16 +459,16 @@ class TestChooseMatchedWinnerV2:
     def test_hip_multiplicity_veto(self):
         winner, reason = _choose_matched_winner(
             _gaia_row(0.50, phot_g_mean_mag=2.0),
-            _hip_row(0.01, Sn=95),
+            _hip_row(0.01, sn=95),
         )
         assert winner == "gaia"
         assert reason == "hip_multiplicity"
 
     def test_hip_sn5_no_veto(self):
-        """Sn=5 (standard single-star) should not trigger veto."""
+        """sn=5 (standard single-star) should not trigger veto."""
         winner, reason = _choose_matched_winner(
             _gaia_row(0.50, phot_g_mean_mag=2.0),
-            _hip_row(0.01, Sn=5),
+            _hip_row(0.01, sn=5),
         )
         assert winner == "hip"
 
@@ -476,7 +476,7 @@ class TestChooseMatchedWinnerV2:
         """G < 3.5: margin=1.0, so Hip wins if strictly better."""
         winner, reason = _choose_matched_winner(
             _gaia_row(0.10, phot_g_mean_mag=2.0),
-            _hip_row(0.05, Sn=5),
+            _hip_row(0.05, sn=5),
         )
         assert winner == "hip"
 
@@ -484,7 +484,7 @@ class TestChooseMatchedWinnerV2:
         """3.5 <= G < 6: margin=0.6, so Hip score must be < gaia*0.6."""
         winner, reason = _choose_matched_winner(
             _gaia_row(0.10, phot_g_mean_mag=5.0),
-            _hip_row(0.08, Sn=5),
+            _hip_row(0.08, sn=5),
         )
         assert winner == "gaia"
         assert reason == "gaia_margin"
@@ -493,7 +493,7 @@ class TestChooseMatchedWinnerV2:
         """3.5 <= G < 6: Hip score 0.04 < gaia 0.10 * 0.6 = 0.06 → Hip wins."""
         winner, reason = _choose_matched_winner(
             _gaia_row(0.10, phot_g_mean_mag=5.0),
-            _hip_row(0.04, Sn=5),
+            _hip_row(0.04, sn=5),
         )
         assert winner == "hip"
 
@@ -501,7 +501,7 @@ class TestChooseMatchedWinnerV2:
         """G >= 6: margin=0.5, Hip needs to be ≥50% better."""
         winner, reason = _choose_matched_winner(
             _gaia_row(0.10, phot_g_mean_mag=8.0),
-            _hip_row(0.06, Sn=5),
+            _hip_row(0.06, sn=5),
         )
         assert winner == "gaia"
         assert reason == "gaia_margin"
@@ -510,7 +510,7 @@ class TestChooseMatchedWinnerV2:
         """G >= 6: Hip score 0.04 < gaia 0.10 * 0.5 = 0.05 → Hip wins."""
         winner, reason = _choose_matched_winner(
             _gaia_row(0.10, phot_g_mean_mag=8.0),
-            _hip_row(0.04, Sn=5),
+            _hip_row(0.04, sn=5),
         )
         assert winner == "hip"
 
@@ -518,7 +518,7 @@ class TestChooseMatchedWinnerV2:
         """Without phot_g_mean_mag, falls back to mag_abs + 5*log10(r_pc/10)."""
         winner, reason = _choose_matched_winner(
             _gaia_row(0.10, mag_abs=-1.0, r_pc=1.0),
-            _hip_row(0.05, Sn=5),
+            _hip_row(0.05, sn=5),
         )
         # apparent G ≈ -1.0 + 5*log10(0.1) = -6.0 → very bright → margin=1.0
         assert winner == "hip"
@@ -566,4 +566,3 @@ class TestSafeHelpers:
     def test_safe_score_inf_on_missing(self):
         assert _safe_score(None) == math.inf
         assert _safe_score(float("nan")) == math.inf
-

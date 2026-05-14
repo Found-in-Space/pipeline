@@ -320,9 +320,12 @@ The merger must expose:
 - all diagnostic auxiliary columns per matched pair
 - reproducible output for the same input tables
 
-#### Backward compatibility
+#### Auxiliary-column tolerance
 
-The widened catalog outputs are a **superset** of the original `OUTPUT_COLS` schema. The merger validates that required columns are present (subset check), so older processed files without auxiliary columns still work — the merger defaults missing auxiliary columns to safe values (NaN / None) that bypass vetoes and apply the strictest margin.
+Catalog staging outputs are a **superset** of the core `OUTPUT_COLS` schema.
+The merger validates that required columns are present with a subset check. If
+optional auxiliary columns are missing, the merger defaults them to safe values
+(NaN / None) that bypass vetoes and apply the strictest margin.
 
 ---
 

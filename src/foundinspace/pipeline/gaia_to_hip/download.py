@@ -6,7 +6,6 @@ from pathlib import Path
 
 import click
 from astropy.table import Table
-from astroquery.gaia import Gaia
 
 from foundinspace.pipeline.project import load_project
 
@@ -18,6 +17,12 @@ SELECT
   number_of_neighbours
 FROM gaiadr3.hipparcos2_best_neighbour
 """
+
+
+def _launch_gaia_job_async(query: str):
+    from astroquery.gaia import Gaia
+
+    return Gaia.launch_job_async(query)
 
 
 def fetch_hipparcos2_best_neighbour_to_ecsv(
@@ -35,7 +40,7 @@ def fetch_hipparcos2_best_neighbour_to_ecsv(
         raise FileExistsError(str(output_path))
 
     # Use async TAP job to avoid astroquery sync-query TOP truncation.
-    job = Gaia.launch_job_async(BEST_NEIGHBOUR_QUERY)
+    job = _launch_gaia_job_async(BEST_NEIGHBOUR_QUERY)
     result = job.get_results()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

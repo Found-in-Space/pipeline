@@ -4,7 +4,7 @@ from pathlib import Path
 
 from astropy.table import Table
 
-from foundinspace.pipeline.gaia_to_hip import download
+import foundinspace.pipeline.gaia_to_hip.download
 
 
 def test_fetch_uses_async_job_and_writes_ecsv(tmp_path: Path, monkeypatch):
@@ -30,17 +30,19 @@ def test_fetch_uses_async_job_and_writes_ecsv(tmp_path: Path, monkeypatch):
         captured["query"] = query
         return _FakeJob()
 
-    def _sync_should_not_be_used(*_args, **_kwargs):
-        raise AssertionError("launch_job() should not be used for this download")
+    monkeypatch.setattr(
+        foundinspace.pipeline.gaia_to_hip.download,
+        "_launch_gaia_job_async",
+        _fake_launch_job_async,
+    )
 
-    monkeypatch.setattr(download.Gaia, "launch_job_async", _fake_launch_job_async)
-    monkeypatch.setattr(download.Gaia, "launch_job", _sync_should_not_be_used)
-
-    out = download.fetch_hipparcos2_best_neighbour_to_ecsv(output, overwrite=True)
+    out = foundinspace.pipeline.gaia_to_hip.download.fetch_hipparcos2_best_neighbour_to_ecsv(
+        output,
+        overwrite=True,
+    )
 
     assert out == output
     assert output.exists()
     table = Table.read(output, format="ascii.ecsv")
     assert len(table) == 2
     assert "FROM gaiadr3.hipparcos2_best_neighbour" in captured["query"]
-

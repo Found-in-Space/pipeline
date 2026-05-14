@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
-from astroquery.vizier import Vizier
 
 from foundinspace.pipeline.project import load_project
 
@@ -24,6 +23,8 @@ def _fetch_catalog_to_ecsv(
     output_path = Path(output_path).expanduser()
     if output_path.exists() and not overwrite:
         raise FileExistsError(str(output_path))
+
+    from astroquery.vizier import Vizier
 
     v = Vizier(columns=columns, row_limit=-1)
     tables = v.get_catalogs(catalog)

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import click
 
-from foundinspace.pipeline.gaia_to_hip import download
+import foundinspace.pipeline.gaia_to_hip.download
 from foundinspace.pipeline.gaia_to_hip.pipeline import prepare_gaia_hip_mapping
 from foundinspace.pipeline.project import load_project
 
@@ -12,7 +12,7 @@ def cli():
     """Gaia↔Hipparcos cross-match: download `hipparcos2_best_neighbour`, build sidecar."""
 
 
-cli.add_command(download.main, name="download")
+cli.add_command(foundinspace.pipeline.gaia_to_hip.download.main, name="download")
 
 
 def _load_project_or_die(project_path: Path):
@@ -37,7 +37,10 @@ def build_cmd(
 ) -> None:
     project = _load_project_or_die(project_path)
     download_output = project.gaia_to_hip.download_ecsv
-    download.ensure_hipparcos2_best_neighbour_ecsv(download_output, force=force)
+    foundinspace.pipeline.gaia_to_hip.download.ensure_hipparcos2_best_neighbour_ecsv(
+        download_output,
+        force=force,
+    )
     out = prepare_gaia_hip_mapping(
         download_output,
         project.gaia_to_hip.output_parquet,

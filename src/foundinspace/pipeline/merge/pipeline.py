@@ -17,52 +17,15 @@ import pyarrow.parquet as pq
 from tqdm.auto import tqdm
 
 from foundinspace.pipeline.constants import OUTPUT_COLS
+from foundinspace.pipeline.merge import policy, shards
 
 _LOG = logging.getLogger(__name__)
 MERGE_BATCH_SIZE = 1_000_000
-
-# Merged HEALPix shards use the same schema as per-catalog OUTPUT_COLS (canonical identity only).
-MERGED_OUTPUT_COLS = list(OUTPUT_COLS)
-
-# ---------------------------------------------------------------------------
-# Merge policy thresholds
-# ---------------------------------------------------------------------------
-# Hip wins only if hip_score < gaia_score * HIP_MARGIN_*.  Lower margin = harder for Hip.
-BRIGHT_AUTO_MAG = 3.5
-BRIGHT_REVIEW_MAG = 6.0
-HIP_MARGIN_VERY_BRIGHT = 1.0  # G < 3.5: Hip wins if strictly better
-HIP_MARGIN_BRIGHT = 0.6       # 3.5 <= G < 6: Hip must be ≥40% better
-HIP_MARGIN_NORMAL = 0.5       # G >= 6: Hip must be ≥50% better
-
-RUWE_WARN_THRESHOLD = 1.4
-HIP_SOLUTION_STANDARD = 5     # Hipparcos Sn=5 = standard 5-param single-star
 
 # Auxiliary columns expected from widened catalog pipelines (gracefully absent).
 _GAIA_AUX_COLS = ["ruwe", "phot_g_mean_mag"]
 _HIP_AUX_COLS = ["Sn", "Hpmag"]
 _CROSS_AUX_COLS = ["number_of_neighbours", "angular_distance"]
-
-DECISION_COLS = [
-    "decision_type",
-    "gaia_source_id",
-    "hip_source_id",
-    "winner_catalog",
-    "winner_source_id",
-    "gaia_score",
-    "hip_score",
-    "tie_break_reason",
-    "override_id",
-    "override_action",
-    "override_reason",
-    "override_policy_version",
-    "note",
-    "number_of_neighbours",
-    "angular_distance_arcsec",
-    "gaia_ruwe",
-    "gaia_phot_g_mean_mag",
-    "hip_solution_type",
-    "hip_apparent_mag",
-]
 
 DROP_OVERRIDE_PAYLOAD_COLS = [col for col in OUTPUT_COLS if col not in {"source", "source_id"}]
 
@@ -107,86 +70,6 @@ def _normalize_key(source: Any, source_id: Any) -> tuple[str, int | str]:
     return src, sid
 
 
-def _safe_score(value: Any) -> float:
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return math.inf
-    return score if math.isfinite(score) else math.inf
-
-
-def _safe_float(value: Any) -> float:
-    """Coerce to float; return NaN for missing / non-numeric values."""
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return math.nan
-    return v
-
-
-def _safe_int(value: Any, default: int | None = None) -> int | None:
-    """Coerce to int; return *default* for missing / non-numeric values."""
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return default
-    if not math.isfinite(v):
-        return default
-    return int(v)
-
-
-def _choose_matched_winner(
-    gaia_row: dict[str, Any],
-    hip_row: dict[str, Any],
-    *,
-    number_of_neighbours: int | None = None,
-) -> tuple[str, str]:
-    """V2 winner selection: Gaia-default with vetoes, bright-star gate, and margin.
-
-    Returns (winner_catalog, tie_break_reason).
-    """
-    gaia_score = _safe_score(gaia_row.get("astrometry_quality"))
-    hip_score = _safe_score(hip_row.get("astrometry_quality"))
-
-    # Veto 1: ambiguous crossmatch (multiple Gaia neighbours for this HIP entry)
-    if number_of_neighbours is not None and number_of_neighbours > 1:
-        return "gaia", "neighbour_veto"
-
-    # Veto 2: Hipparcos non-standard solution (likely multiplicity / acceleration)
-    hip_sn = _safe_int(hip_row.get("Sn"))
-    if hip_sn is not None and hip_sn != HIP_SOLUTION_STANDARD:
-        return "gaia", "hip_multiplicity"
-
-    # Bright-star gate: determine margin from Gaia apparent magnitude.
-    g_mag = _safe_float(gaia_row.get("phot_g_mean_mag"))
-    if not math.isfinite(g_mag):
-        # Fall back to distance-modulus estimate from the Gaia row's own data.
-        mag_abs = _safe_float(gaia_row.get("mag_abs"))
-        r_pc = _safe_float(gaia_row.get("r_pc"))
-        if math.isfinite(mag_abs) and r_pc > 0:
-            g_mag = mag_abs + 5.0 * math.log10(r_pc / 10.0)
-
-    if math.isfinite(g_mag) and g_mag < BRIGHT_AUTO_MAG:
-        margin = HIP_MARGIN_VERY_BRIGHT
-    elif math.isfinite(g_mag) and g_mag < BRIGHT_REVIEW_MAG:
-        margin = HIP_MARGIN_BRIGHT
-    else:
-        margin = HIP_MARGIN_NORMAL
-
-    if hip_score < gaia_score * margin:
-        return "hip", ""
-    if gaia_score <= hip_score:
-        return "gaia", ""
-    return "gaia", "gaia_margin"
-
-
-def _decision_record(**kwargs: Any) -> dict[str, Any]:
-    """Build a decision record with all DECISION_COLS, defaulting missing keys to pd.NA."""
-    rec: dict[str, Any] = {col: pd.NA for col in DECISION_COLS}
-    rec.update(kwargs)
-    return rec
-
-
 def _output_row(
     payload: dict[str, Any],
     *,
@@ -212,59 +95,7 @@ def _prepare_gaia_unmatched(df: pd.DataFrame) -> pd.DataFrame:
     out = df[OUTPUT_COLS].copy()
     out["source"] = "gaia"
     out["source_id"] = out["source_id"].astype("uint64").astype("string")
-    return out[MERGED_OUTPUT_COLS]
-
-
-def _build_healpix(order: int):
-    try:
-        from astropy_healpix import HEALPix
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "astropy-healpix is required for merge HEALPix sharding. "
-            "Install dependencies (pip install -e .) and retry."
-        ) from exc
-    return HEALPix(nside=2**order, order="nested")
-
-
-def _healpix_pixels(
-    hp: Any,
-    ra_deg: pd.Series | np.ndarray,
-    dec_deg: pd.Series | np.ndarray,
-) -> np.ndarray:
-    from astropy import units as u
-
-    ra_arr = np.asarray(ra_deg, dtype=float)
-    dec_arr = np.asarray(dec_deg, dtype=float)
-    return np.asarray(hp.lonlat_to_healpix(ra_arr * u.deg, dec_arr * u.deg), dtype=np.int64)
-
-
-def _write_shards(
-    df: pd.DataFrame,
-    *,
-    hp: Any,
-    shards_root: Path,
-    phase_tag: str,
-    seq_by_pixel: dict[int, int],
-) -> int:
-    if df.empty:
-        return 0
-    pixels = _healpix_pixels(hp, df["ra_deg"], df["dec_deg"])
-    rows_written = 0
-    for pixel in sorted(np.unique(pixels)):
-        pixel_i = int(pixel)
-        pixel_dir = shards_root / str(pixel_i)
-        pixel_dir.mkdir(parents=True, exist_ok=True)
-        next_seq = seq_by_pixel.get(pixel_i, 0) + 1
-        seq_by_pixel[pixel_i] = next_seq
-        out_path = pixel_dir / f"{next_seq:06d}_{phase_tag}.parquet"
-        part = df.loc[pixels == pixel_i, MERGED_OUTPUT_COLS]
-        table = pa.Table.from_pandas(
-            part,
-            preserve_index=False,
-        )
-        pq.write_table(table, str(out_path), compression="zstd")
-        rows_written += len(part)
-    return rows_written
+    return out[shards.MERGED_OUTPUT_COLS]
 
 
 def _read_required_parquet(path: Path, required_cols: list[str]) -> pd.DataFrame:
@@ -377,7 +208,7 @@ def run_merge(
     shards_root.mkdir(parents=True, exist_ok=True)
 
     nside = 2**healpix_order
-    hp = _build_healpix(healpix_order)
+    hp = shards._build_healpix(healpix_order)
 
     # Load small lookup tables once.
     hip_df = _read_required_parquet(hip_path, OUTPUT_COLS)
@@ -397,8 +228,8 @@ def run_merge(
             cross_df[col] = np.nan
     for rec in cross_df[["gaia_source_id", *_CROSS_AUX_COLS]].itertuples(index=False):
         cross_aux_by_gaia[int(rec.gaia_source_id)] = {
-            "number_of_neighbours": _safe_int(rec.number_of_neighbours),
-            "angular_distance": _safe_float(rec.angular_distance),
+            "number_of_neighbours": policy._safe_int(rec.number_of_neighbours),
+            "angular_distance": policy._safe_float(rec.angular_distance),
         }
 
     overrides_df = _read_required_parquet(
@@ -510,7 +341,7 @@ def run_merge(
             gaia_unmatched_df = gaia_df.loc[~special_mask]
             if not gaia_unmatched_df.empty:
                 out = _prepare_gaia_unmatched(gaia_unmatched_df)
-                written = _write_shards(
+                written = shards._write_shards(
                     out,
                     hp=hp,
                     shards_root=shards_root,
@@ -555,14 +386,14 @@ def run_merge(
                     if hip_id is None:
                         note = "partner_missing"
                     decisions.append(
-                        _decision_record(
+                        policy._decision_record(
                             decision_type="override",
                             gaia_source_id=str(gaia_id),
                             hip_source_id=str(hip_id) if hip_id is not None else pd.NA,
                             winner_catalog=winner_catalog or pd.NA,
                             winner_source_id=winner_source_id or pd.NA,
-                            gaia_score=_safe_score(gaia_rec.get("astrometry_quality")),
-                            hip_score=_safe_score(
+                            gaia_score=policy._safe_score(gaia_rec.get("astrometry_quality")),
+                            hip_score=policy._safe_score(
                                 hip_rec.get("astrometry_quality")
                                 if hip_rec is not None
                                 else np.nan
@@ -586,7 +417,7 @@ def run_merge(
                 cross_aux = cross_aux_by_gaia.get(gaia_id, {})
                 n_neighbours = cross_aux.get("number_of_neighbours")
 
-                winner_catalog, tie_break_reason = _choose_matched_winner(
+                winner_catalog, tie_break_reason = policy._choose_matched_winner(
                     gaia_rec, hip_rec, number_of_neighbours=n_neighbours,
                 )
                 if winner_catalog == "gaia":
@@ -602,13 +433,13 @@ def run_merge(
                 special_out_rows.append(winner_row)
                 resolved_hip_ids.add(int(hip_id))
                 report.matched_pairs_scored += 1
-                _ruwe = _safe_float(gaia_rec.get("ruwe"))
-                _gmag = _safe_float(gaia_rec.get("phot_g_mean_mag"))
-                _sn = _safe_int(hip_rec.get("Sn"))
-                _hmag = _safe_float(hip_rec.get("Hpmag"))
-                _ang = _safe_float(cross_aux.get("angular_distance", math.nan))
+                _ruwe = policy._safe_float(gaia_rec.get("ruwe"))
+                _gmag = policy._safe_float(gaia_rec.get("phot_g_mean_mag"))
+                _sn = policy._safe_int(hip_rec.get("Sn"))
+                _hmag = policy._safe_float(hip_rec.get("Hpmag"))
+                _ang = policy._safe_float(cross_aux.get("angular_distance", math.nan))
                 decisions.append(
-                    _decision_record(
+                    policy._decision_record(
                         decision_type="score",
                         gaia_source_id=str(gaia_id),
                         hip_source_id=str(hip_id),
@@ -616,8 +447,8 @@ def run_merge(
                         winner_source_id=str(
                             gaia_id if winner_catalog == "gaia" else int(hip_id)
                         ),
-                        gaia_score=_safe_score(gaia_rec.get("astrometry_quality")),
-                        hip_score=_safe_score(hip_rec.get("astrometry_quality")),
+                        gaia_score=policy._safe_score(gaia_rec.get("astrometry_quality")),
+                        hip_score=policy._safe_score(hip_rec.get("astrometry_quality")),
                         tie_break_reason=tie_break_reason or pd.NA,
                         number_of_neighbours=n_neighbours
                         if n_neighbours is not None
@@ -637,8 +468,8 @@ def run_merge(
                 )
 
         if special_out_rows:
-            special_df = pd.DataFrame(special_out_rows, columns=MERGED_OUTPUT_COLS)
-            written = _write_shards(
+            special_df = pd.DataFrame(special_out_rows, columns=shards.MERGED_OUTPUT_COLS)
+            written = shards._write_shards(
                 special_df,
                 hp=hp,
                 shards_root=shards_root,
@@ -677,7 +508,7 @@ def run_merge(
             else:
                 raise ValueError(f"Unsupported override action for HIP flush path: {action}")
             decisions.append(
-                _decision_record(
+                policy._decision_record(
                     decision_type="override",
                     gaia_source_id=str(gaia_id) if gaia_id is not None else pd.NA,
                     hip_source_id=str(hip_id),
@@ -685,7 +516,7 @@ def run_merge(
                     winner_source_id=str(override["source_id"])
                     if action == "replace"
                     else pd.NA,
-                    hip_score=_safe_score(hip_rec.get("astrometry_quality")),
+                    hip_score=policy._safe_score(hip_rec.get("astrometry_quality")),
                     override_id=override_id,
                     override_action=action,
                     override_reason=override.get("override_reason", pd.NA),
@@ -703,8 +534,8 @@ def run_merge(
         report.unmatched_hip += 1
 
     if hip_out_rows:
-        hip_out_df = pd.DataFrame(hip_out_rows, columns=MERGED_OUTPUT_COLS)
-        written = _write_shards(
+        hip_out_df = pd.DataFrame(hip_out_rows, columns=shards.MERGED_OUTPUT_COLS)
+        written = shards._write_shards(
             hip_out_df,
             hp=hp,
             shards_root=shards_root,
@@ -729,7 +560,7 @@ def run_merge(
         add_rows.append(_output_row(ov))
         report.override_add_applied += 1
         decisions.append(
-            _decision_record(
+            policy._decision_record(
                 decision_type="override_add",
                 winner_catalog="manual",
                 winner_source_id=str(ov["source_id"]),
@@ -741,8 +572,8 @@ def run_merge(
         )
 
     if add_rows:
-        add_df = pd.DataFrame(add_rows, columns=MERGED_OUTPUT_COLS)
-        written = _write_shards(
+        add_df = pd.DataFrame(add_rows, columns=shards.MERGED_OUTPUT_COLS)
+        written = shards._write_shards(
             add_df,
             hp=hp,
             shards_root=shards_root,
@@ -764,7 +595,7 @@ def run_merge(
             ov.get("source_id"),
         )
         decisions.append(
-            _decision_record(
+            policy._decision_record(
                 decision_type="override_no_effect",
                 override_id=override_id,
                 override_action=ov.get("action", pd.NA),
@@ -788,10 +619,10 @@ def run_merge(
             f"expected={expected_rows_emitted}"
         )
 
-    decisions_df = pd.DataFrame(decisions, columns=DECISION_COLS)
+    decisions_df = pd.DataFrame(decisions, columns=policy.DECISION_COLS)
     report.decisions_rows = len(decisions_df)
     if decisions_df.empty:
-        decisions_df = pd.DataFrame(columns=DECISION_COLS)
+        decisions_df = pd.DataFrame(columns=policy.DECISION_COLS)
     pq.write_table(
         pa.Table.from_pandas(decisions_df, preserve_index=False),
         str(decisions_path),
@@ -803,4 +634,3 @@ def run_merge(
         fp.write("\n")
 
     return report
-

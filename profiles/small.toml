@@ -1,0 +1,28 @@
+format_version = 1
+
+[gaia]
+input_dir = "data/catalogs/gaia-small"
+output_dir = "data/processed/gaia-small"
+mag_limit = 8.0
+
+[gaia-to-hip]
+download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"
+output_parquet = "data/processed/gaia_hip_map.parquet"
+
+[hip]
+download_ecsv = "data/catalogs/hipparcos2.ecsv"
+output_parquet = "data/processed/hip_stars.parquet"
+
+[identifiers]
+hip_hd_ecsv = "data/catalogs/hip_hd.ecsv"
+iv27a_catalog_ecsv = "data/catalogs/iv27a_catalog.ecsv"
+iv27a_proper_names_ecsv = "data/catalogs/iv27a_proper_names.ecsv"
+output_parquet = "data/processed/identifiers_map.parquet"
+
+[overrides]
+output_parquet = "data/processed/overrides.parquet"
+# data_dir = "path/to/overrides"
+
+[merge]
+output_dir = "data/processed/merged-small"
+healpix_order = 3

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
-from foundinspace.pipeline.overrides import (
+from foundinspace.pipeline.overrides.loader import (
     icrs_spherical_to_cartesian_pc,
     iter_override_source_files,
     load_normalized_override_stars,

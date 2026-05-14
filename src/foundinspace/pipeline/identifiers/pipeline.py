@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -271,10 +272,8 @@ def _override_identifier_rows(data_dir: Path | None) -> pd.DataFrame:
             str_keys = ("bayer", "constellation", "proper_name")
             for k in int_keys:
                 if k in ident and ident[k] is not None and ident[k] != "":
-                    try:
+                    with suppress(TypeError, ValueError):
                         row[k] = int(ident[k])
-                    except (TypeError, ValueError):
-                        pass
             for k in str_keys:
                 if k in ident and ident[k] is not None and str(ident[k]).strip() != "":
                     row[k] = str(ident[k]).strip()

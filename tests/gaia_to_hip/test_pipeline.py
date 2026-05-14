@@ -7,7 +7,12 @@ import pandas as pd
 import pytest
 from astropy.table import Table
 
-from foundinspace.pipeline.gaia_to_hip import pipeline as gh
+from foundinspace.pipeline.gaia_to_hip.pipeline import (
+    GAIA_HIP_MAP_COLS,
+    MAPPING_SOURCE_HIPPARCOS2_BEST_NEIGHBOUR,
+    build_gaia_hip_mapping_from_dataframe,
+    prepare_gaia_hip_mapping,
+)
 
 
 def test_build_gaia_hip_mapping_from_dataframe_filters_and_normalizes():
@@ -18,20 +23,20 @@ def test_build_gaia_hip_mapping_from_dataframe_filters_and_normalizes():
         }
     )
 
-    out = gh.build_gaia_hip_mapping_from_dataframe(df)
+    out = build_gaia_hip_mapping_from_dataframe(df)
 
     assert len(out) == 2
     assert out["gaia_source_id"].tolist() == [1, 5]
     assert out["hip_source_id"].tolist() == [10, 7]
-    assert (out["mapping_source"] == gh.MAPPING_SOURCE_HIPPARCOS2_BEST_NEIGHBOUR).all()
-    assert list(out.columns) == gh.GAIA_HIP_MAP_COLS
+    assert (out["mapping_source"] == MAPPING_SOURCE_HIPPARCOS2_BEST_NEIGHBOUR).all()
+    assert list(out.columns) == GAIA_HIP_MAP_COLS
 
 
 def test_build_gaia_hip_mapping_missing_columns_empty():
     df = pd.DataFrame({"source_id": [1, 2, 3]})
-    out = gh.build_gaia_hip_mapping_from_dataframe(df)
+    out = build_gaia_hip_mapping_from_dataframe(df)
     assert out.empty
-    assert list(out.columns) == gh.GAIA_HIP_MAP_COLS
+    assert list(out.columns) == GAIA_HIP_MAP_COLS
 
 
 def test_build_gaia_hip_mapping_deduplicates_and_sorts():
@@ -41,7 +46,7 @@ def test_build_gaia_hip_mapping_deduplicates_and_sorts():
             "original_ext_source_id": [50, 20, 20, 10],
         }
     )
-    out = gh.build_gaia_hip_mapping_from_dataframe(df)
+    out = build_gaia_hip_mapping_from_dataframe(df)
     assert out[["gaia_source_id", "hip_source_id"]].values.tolist() == [
         [1, 10],
         [2, 20],
@@ -58,11 +63,11 @@ def test_prepare_gaia_hip_mapping_writes_parquet(tmp_path: Path):
     )
     t.write(ecsv, format="ascii.ecsv", overwrite=True)
 
-    gh.prepare_gaia_hip_mapping(ecsv, out_parquet, overwrite=True)
+    prepare_gaia_hip_mapping(ecsv, out_parquet, overwrite=True)
 
     assert out_parquet.exists()
     read_back = pd.read_parquet(out_parquet)
-    assert list(read_back.columns) == gh.GAIA_HIP_MAP_COLS
+    assert list(read_back.columns) == GAIA_HIP_MAP_COLS
     assert read_back["gaia_source_id"].tolist() == [100, 200]
     assert read_back["hip_source_id"].tolist() == [42, 99]
     assert read_back["number_of_neighbours"].tolist() == [1, 2]
@@ -77,4 +82,4 @@ def test_prepare_gaia_hip_mapping_raises_when_output_exists(tmp_path: Path):
     t.write(ecsv, format="ascii.ecsv", overwrite=True)
 
     with pytest.raises(FileExistsError):
-        gh.prepare_gaia_hip_mapping(ecsv, out_parquet, overwrite=False)
+        prepare_gaia_hip_mapping(ecsv, out_parquet, overwrite=False)

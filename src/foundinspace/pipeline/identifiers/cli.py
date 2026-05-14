@@ -2,7 +2,7 @@ from pathlib import Path
 
 import click
 
-from foundinspace.pipeline.identifiers import download
+import foundinspace.pipeline.identifiers.download
 from foundinspace.pipeline.identifiers.pipeline import prepare_identifiers_sidecar
 from foundinspace.pipeline.project import load_project
 
@@ -12,7 +12,7 @@ def cli():
     pass
 
 
-cli.add_command(download.main, name="download")
+cli.add_command(foundinspace.pipeline.identifiers.download.main, name="download")
 
 
 def _load_project_or_die(project_path: Path):
@@ -55,7 +55,7 @@ def build(
     force: bool,
 ) -> None:
     project = _load_project_or_die(project_path)
-    outputs = download.ensure_identifier_catalogs(
+    outputs = foundinspace.pipeline.identifiers.download.ensure_identifier_catalogs(
         hip_hd_output=project.identifiers.hip_hd_ecsv,
         iv27a_catalog_output=project.identifiers.iv27a_catalog_ecsv,
         iv27a_proper_names_output=project.identifiers.iv27a_proper_names_ecsv,

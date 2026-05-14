@@ -4,12 +4,15 @@ from pathlib import Path
 
 import pytest
 import tomllib
+from click.testing import CliRunner
 
 from foundinspace.pipeline.project import (
     FORMAT_VERSION,
+    PROJECT_PROFILES,
     load_project,
     render_project_template,
 )
+from foundinspace.pipeline.project_cli import cli as project_cli
 
 
 def _project_text() -> str:
@@ -233,3 +236,50 @@ def test_render_project_template_is_valid_toml_with_all_sections() -> None:
 
     assert "FIS_CATALOGS_DIR" not in rendered
     assert "FIS_PROCESSED_DIR" not in rendered
+
+
+@pytest.mark.parametrize("profile", PROJECT_PROFILES)
+def test_render_project_profiles_are_valid_toml(profile: str) -> None:
+    rendered = render_project_template(profile=profile)
+    parsed = tomllib.loads(rendered)
+
+    assert parsed["format_version"] == FORMAT_VERSION
+    assert parsed["gaia"]["input_dir"]
+    assert parsed["gaia"]["output_dir"]
+    assert parsed["merge"]["healpix_order"] == 3
+
+
+@pytest.mark.parametrize("profile", PROJECT_PROFILES)
+def test_checked_in_profile_matches_renderer(profile: str) -> None:
+    profile_path = Path(__file__).resolve().parents[1] / "profiles" / f"{profile}.toml"
+
+    assert profile_path.read_text(encoding="utf-8") == render_project_template(profile)
+
+
+def test_render_project_template_small_profile_sets_mag_limit() -> None:
+    parsed = tomllib.loads(render_project_template(profile="small"))
+
+    assert parsed["gaia"]["input_dir"] == "data/catalogs/gaia-small"
+    assert parsed["gaia"]["mag_limit"] == 8.0
+    assert parsed["merge"]["output_dir"] == "data/processed/merged-small"
+
+
+def test_render_project_template_rejects_unknown_profile() -> None:
+    with pytest.raises(ValueError, match="Unknown project profile"):
+        render_project_template(profile="tiny")
+
+
+@pytest.mark.parametrize("profile", PROJECT_PROFILES)
+def test_project_init_writes_selected_profile(tmp_path: Path, profile: str) -> None:
+    runner = CliRunner()
+    project_path = tmp_path / f"{profile}.toml"
+
+    result = runner.invoke(
+        project_cli,
+        ["init", "--profile", profile, str(project_path)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert project_path.read_text(encoding="utf-8") == render_project_template(profile)
+    project = load_project(project_path)
+    assert project.project_path == project_path.resolve()

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import click
 
-from foundinspace.pipeline.hipparcos import download
+import foundinspace.pipeline.hipparcos.download
 from foundinspace.pipeline.hipparcos.pipeline import main
 from foundinspace.pipeline.project import load_project
 
@@ -12,7 +12,7 @@ def cli():
     pass
 
 
-cli.add_command(download.main, name="download")
+cli.add_command(foundinspace.pipeline.hipparcos.download.main, name="download")
 
 
 def _load_project_or_die(project_path: Path):
@@ -38,7 +38,10 @@ def build_cmd(
     limit: int | None,
 ) -> None:
     project = _load_project_or_die(project_path)
-    input_file = download.ensure_hipparcos_ecsv(project.hip.download_ecsv, force=force)
+    input_file = foundinspace.pipeline.hipparcos.download.ensure_hipparcos_ecsv(
+        project.hip.download_ecsv,
+        force=force,
+    )
     output_file = project.hip.output_parquet
     output_file.parent.mkdir(parents=True, exist_ok=True)
     main(input_file, output_file, skip_if_exists=not force, limit=limit)

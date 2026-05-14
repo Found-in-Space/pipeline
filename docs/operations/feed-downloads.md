@@ -1,6 +1,8 @@
 # Feed Downloads (Gaia + Hipparcos)
 
-This is a standalone recipe to reproduce the download side of the star feed pipeline outside any specific codebase.
+This is the operational recipe for the download side of the star feed pipeline.
+Use the repo commands where they exist; the Gaia all-sky batching notes remain a
+manual recipe until Gaia download automation is added.
 
 It covers:
 
@@ -10,15 +12,9 @@ It covers:
 
 ## Prerequisites
 
-- Python 3.10+.
-- `astroquery`, `astropy`, `pandas`, `numpy`.
+- Python 3.13+.
+- Project dependencies installed with `uv sync`.
 - Gaia Archive account credentials for async TAP jobs.
-
-Example install:
-
-```bash
-python -m pip install astroquery astropy pandas numpy
-```
 
 ## Output files
 
@@ -290,4 +286,3 @@ If differences occur, check for:
 - changed Gaia release/table names,
 - changed filter predicates,
 - integer division/casting behavior in your TAP service.
-
