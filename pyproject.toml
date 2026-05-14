@@ -27,6 +27,9 @@ fis-pipeline = "foundinspace.pipeline.cli:cli"
 [tool.hatch.build.targets.wheel]
 packages = ["src/foundinspace"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"profiles" = "profiles"
+
 [dependency-groups]
 dev = [
   "pytest>=8",

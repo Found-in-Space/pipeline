@@ -5,16 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from foundinspace.pipeline.constants import (
-    DIST_SRC_OVERRIDE,
-    FLAG_DIST_VALID,
-    OUTPUT_COLS,
-)
+from foundinspace.pipeline.common.ids import serialize_source_id
+from foundinspace.pipeline.common.quality_flags import pack_status_flags
+from foundinspace.pipeline.constants import DIST_SRC_OVERRIDE, OUTPUT_COLS
 from foundinspace.pipeline.overrides.loader import load_normalized_override_stars
 
 OVERRIDE_METADATA_COLS = [
@@ -25,17 +22,6 @@ OVERRIDE_METADATA_COLS = [
 ]
 
 OUTPUT_OVERRIDES_COLS = [*OUTPUT_COLS, *OVERRIDE_METADATA_COLS]
-
-
-def _serialize_source_id(value: Any) -> Any:
-    """Stable string identity for merger matching (numeric HIP/Gaia vs string manual ids)."""
-    if value is None:
-        return pd.NA
-    if isinstance(value, bool):
-        return str(value)
-    if isinstance(value, (int, np.integer)):
-        return str(int(value))
-    return str(value)
 
 
 def _row_for_star(star: dict[str, Any]) -> dict[str, Any]:
@@ -49,7 +35,7 @@ def _row_for_star(star: dict[str, Any]) -> dict[str, Any]:
     if action == "drop":
         out = {
             "source": str(star["source"]),
-            "source_id": _serialize_source_id(star["source_id"]),
+            "source_id": serialize_source_id(star["source_id"]),
             "x_icrs_pc": pd.NA,
             "y_icrs_pc": pd.NA,
             "z_icrs_pc": pd.NA,
@@ -72,10 +58,10 @@ def _row_for_star(star: dict[str, Any]) -> dict[str, Any]:
             f"Non-drop override {oid!r} missing required keys: {missing}"
         )
 
-    qf = int(np.uint16(DIST_SRC_OVERRIDE | FLAG_DIST_VALID))
+    qf = int(pack_status_flags(DIST_SRC_OVERRIDE, distance_valid=True))
     out = {
         "source": str(star["source"]),
-        "source_id": _serialize_source_id(star["source_id"]),
+        "source_id": serialize_source_id(star["source_id"]),
         "x_icrs_pc": float(star["x_icrs_pc"]),
         "y_icrs_pc": float(star["y_icrs_pc"]),
         "z_icrs_pc": float(star["z_icrs_pc"]),

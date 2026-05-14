@@ -1,8 +1,8 @@
 """Merge decision policy helpers.
 
-This module holds the catalog winner rules and decision-record shape used by
-``merge.pipeline``. Keeping it separate makes the policy easier to test and
-explain without reading the streaming orchestration code.
+This module holds the catalog winner rules used by ``merge.pipeline``. Keeping
+it separate makes the policy easier to test and explain without reading the
+streaming orchestration code.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import pandas as pd
+from foundinspace.pipeline.common.photometry import apparent_magnitude_from_absolute
 
 # ---------------------------------------------------------------------------
 # Merge policy thresholds
@@ -24,28 +24,6 @@ HIP_MARGIN_NORMAL = 0.5  # G >= 6: Hip must be >=50% better
 
 RUWE_WARN_THRESHOLD = 1.4
 HIP_SOLUTION_STANDARD = 5  # Hipparcos Sn=5 = standard 5-param single-star
-
-DECISION_COLS = [
-    "decision_type",
-    "gaia_source_id",
-    "hip_source_id",
-    "winner_catalog",
-    "winner_source_id",
-    "gaia_score",
-    "hip_score",
-    "tie_break_reason",
-    "override_id",
-    "override_action",
-    "override_reason",
-    "override_policy_version",
-    "note",
-    "number_of_neighbours",
-    "angular_distance_arcsec",
-    "gaia_ruwe",
-    "gaia_phot_g_mean_mag",
-    "hip_solution_type",
-    "hip_apparent_mag",
-]
 
 
 def _safe_score(value: Any) -> float:
@@ -105,7 +83,7 @@ def _choose_matched_winner(
         mag_abs = _safe_float(gaia_row.get("mag_abs"))
         r_pc = _safe_float(gaia_row.get("r_pc"))
         if math.isfinite(mag_abs) and r_pc > 0:
-            g_mag = mag_abs + 5.0 * math.log10(r_pc / 10.0)
+            g_mag = apparent_magnitude_from_absolute(mag_abs, r_pc)
 
     if math.isfinite(g_mag) and g_mag < BRIGHT_AUTO_MAG:
         margin = HIP_MARGIN_VERY_BRIGHT
@@ -119,10 +97,3 @@ def _choose_matched_winner(
     if gaia_score <= hip_score:
         return "gaia", ""
     return "gaia", "gaia_margin"
-
-
-def _decision_record(**kwargs: Any) -> dict[str, Any]:
-    """Build a decision record with all ``DECISION_COLS``."""
-    rec: dict[str, Any] = dict.fromkeys(DECISION_COLS, pd.NA)
-    rec.update(kwargs)
-    return rec

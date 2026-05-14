@@ -16,8 +16,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm.auto import tqdm
 
+from foundinspace.pipeline.common.ids import normalize_compound_key
 from foundinspace.pipeline.constants import OUTPUT_COLS
 from foundinspace.pipeline.merge import policy, shards
+from foundinspace.pipeline.merge.decisions import DECISION_COLS, decision_record
+from foundinspace.pipeline.merge.overrides import (
+    OVERRIDE_REQUIRED_COLS,
+    find_pair_override,
+    gaia_special_ids_for_overrides,
+    split_override_rows,
+)
 
 _LOG = logging.getLogger(__name__)
 MERGE_BATCH_SIZE = 1_000_000
@@ -26,8 +34,6 @@ MERGE_BATCH_SIZE = 1_000_000
 _GAIA_AUX_COLS = ["ruwe", "phot_g_mean_mag"]
 _HIP_AUX_COLS = ["Sn", "Hpmag"]
 _CROSS_AUX_COLS = ["number_of_neighbours", "angular_distance"]
-
-DROP_OVERRIDE_PAYLOAD_COLS = [col for col in OUTPUT_COLS if col not in {"source", "source_id"}]
 
 
 @dataclass
@@ -56,18 +62,6 @@ class MergeReport:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
-
-def _normalize_source(source: Any) -> str:
-    return str(source).strip().lower()
-
-
-def _normalize_key(source: Any, source_id: Any) -> tuple[str, int | str]:
-    src = _normalize_source(source)
-    sid = str(source_id).strip()
-    if src in {"gaia", "hip"}:
-        return src, int(sid)
-    return src, sid
 
 
 def _output_row(
@@ -135,40 +129,6 @@ def _build_crossmatch_maps(df: pd.DataFrame) -> tuple[dict[int, int], dict[int, 
     return gaia_to_hip, hip_to_gaia
 
 
-def _find_pair_override(
-    overrides_by_key: dict[tuple[str, int | str], dict[str, Any]],
-    *,
-    gaia_id: int | None,
-    hip_id: int | None,
-) -> dict[str, Any] | None:
-    hits: list[dict[str, Any]] = []
-    if gaia_id is not None:
-        ov = overrides_by_key.get(("gaia", gaia_id))
-        if ov is not None:
-            hits.append(ov)
-    if hip_id is not None:
-        ov = overrides_by_key.get(("hip", hip_id))
-        if ov is not None:
-            hits.append(ov)
-    if not hits:
-        return None
-    unique_ids = {str(h["override_id"]) for h in hits}
-    if len(unique_ids) > 1:
-        raise ValueError(
-            f"Conflicting overrides for pair gaia={gaia_id} hip={hip_id}: {sorted(unique_ids)}"
-        )
-    return hits[0]
-
-
-def _validate_drop_override_payload(override: dict[str, Any]) -> None:
-    bad_cols = [col for col in DROP_OVERRIDE_PAYLOAD_COLS if not pd.isna(override.get(col))]
-    if bad_cols:
-        raise ValueError(
-            "Drop override "
-            f"{override.get('override_id')} must not include payload columns; found values in {bad_cols}"
-        )
-
-
 def run_merge(
     *,
     gaia_dir: Path,
@@ -232,35 +192,8 @@ def run_merge(
             "angular_distance": policy._safe_float(rec.angular_distance),
         }
 
-    overrides_df = _read_required_parquet(
-        overrides_path,
-        [
-            *OUTPUT_COLS,
-            "override_id",
-            "action",
-            "override_reason",
-            "override_policy_version",
-        ],
-    )
-    overrides_by_key: dict[tuple[str, int | str], dict[str, Any]] = {}
-    add_overrides: list[dict[str, Any]] = []
-    for ov in overrides_df.to_dict(orient="records"):
-        action = str(ov["action"]).strip().lower()
-        source = _normalize_source(ov["source"])
-        key = _normalize_key(source, ov["source_id"])
-        ov["action"] = action
-        ov["source"] = source
-        ov["source_id"] = str(ov["source_id"]).strip()
-        if action == "add":
-            add_overrides.append(ov)
-            continue
-        if action not in {"replace", "drop"}:
-            raise ValueError(f"Unsupported override action: {action}")
-        if action == "drop":
-            _validate_drop_override_payload(ov)
-        if key in overrides_by_key:
-            raise ValueError(f"Duplicate override target key: {key}")
-        overrides_by_key[key] = ov
+    overrides_df = _read_required_parquet(overrides_path, OVERRIDE_REQUIRED_COLS)
+    overrides_by_key, add_overrides = split_override_rows(overrides_df)
 
     # Small state only (no per-row unmatched storage).
     write_seq_by_pixel: dict[int, int] = {}
@@ -272,13 +205,12 @@ def run_merge(
     gaia_files_for_report = [str(p) for p in gaia_files]
 
     gaia_special_ids: set[int] = set(gaia_to_hip.keys())
-    for (src, sid), _ov in overrides_by_key.items():
-        if src == "gaia":
-            gaia_special_ids.add(int(sid))
-        elif src == "hip":
-            partner_gaia = hip_to_gaia.get(int(sid))
-            if partner_gaia is not None:
-                gaia_special_ids.add(partner_gaia)
+    gaia_special_ids.update(
+        gaia_special_ids_for_overrides(
+            overrides_by_key,
+            hip_to_gaia=hip_to_gaia,
+        )
+    )
 
     report = MergeReport(
         healpix_order=healpix_order,
@@ -358,7 +290,11 @@ def run_merge(
                 hip_id = gaia_to_hip.get(gaia_id)
                 hip_rec = hip_by_id.get(hip_id) if hip_id is not None else None
 
-                override = _find_pair_override(overrides_by_key, gaia_id=gaia_id, hip_id=hip_id)
+                override = find_pair_override(
+                    overrides_by_key,
+                    gaia_id=gaia_id,
+                    hip_id=hip_id,
+                )
                 if override is not None:
                     override_id = str(override["override_id"])
                     if override_id in processed_override_ids:
@@ -386,7 +322,7 @@ def run_merge(
                     if hip_id is None:
                         note = "partner_missing"
                     decisions.append(
-                        policy._decision_record(
+                        decision_record(
                             decision_type="override",
                             gaia_source_id=str(gaia_id),
                             hip_source_id=str(hip_id) if hip_id is not None else pd.NA,
@@ -439,7 +375,7 @@ def run_merge(
                 _hmag = policy._safe_float(hip_rec.get("Hpmag"))
                 _ang = policy._safe_float(cross_aux.get("angular_distance", math.nan))
                 decisions.append(
-                    policy._decision_record(
+                    decision_record(
                         decision_type="score",
                         gaia_source_id=str(gaia_id),
                         hip_source_id=str(hip_id),
@@ -491,7 +427,11 @@ def run_merge(
             continue
         hip_rec = hip_by_id[hip_id]
         gaia_id = hip_to_gaia.get(hip_id)
-        override = _find_pair_override(overrides_by_key, gaia_id=gaia_id, hip_id=hip_id)
+        override = find_pair_override(
+            overrides_by_key,
+            gaia_id=gaia_id,
+            hip_id=hip_id,
+        )
         if override is not None:
             override_id = str(override["override_id"])
             if override_id in processed_override_ids:
@@ -508,7 +448,7 @@ def run_merge(
             else:
                 raise ValueError(f"Unsupported override action for HIP flush path: {action}")
             decisions.append(
-                policy._decision_record(
+                decision_record(
                     decision_type="override",
                     gaia_source_id=str(gaia_id) if gaia_id is not None else pd.NA,
                     hip_source_id=str(hip_id),
@@ -524,7 +464,7 @@ def run_merge(
                     note="resolved_in_hip_flush"
                     if gaia_id is not None
                     and ("gaia", gaia_id)
-                    == _normalize_key(override["source"], override["source_id"])
+                    == normalize_compound_key(override["source"], override["source_id"])
                     else pd.NA,
                 )
             )
@@ -560,7 +500,7 @@ def run_merge(
         add_rows.append(_output_row(ov))
         report.override_add_applied += 1
         decisions.append(
-            policy._decision_record(
+            decision_record(
                 decision_type="override_add",
                 winner_catalog="manual",
                 winner_source_id=str(ov["source_id"]),
@@ -595,7 +535,7 @@ def run_merge(
             ov.get("source_id"),
         )
         decisions.append(
-            policy._decision_record(
+            decision_record(
                 decision_type="override_no_effect",
                 override_id=override_id,
                 override_action=ov.get("action", pd.NA),
@@ -619,10 +559,10 @@ def run_merge(
             f"expected={expected_rows_emitted}"
         )
 
-    decisions_df = pd.DataFrame(decisions, columns=policy.DECISION_COLS)
+    decisions_df = pd.DataFrame(decisions, columns=DECISION_COLS)
     report.decisions_rows = len(decisions_df)
     if decisions_df.empty:
-        decisions_df = pd.DataFrame(columns=policy.DECISION_COLS)
+        decisions_df = pd.DataFrame(columns=DECISION_COLS)
     pq.write_table(
         pa.Table.from_pandas(decisions_df, preserve_index=False),
         str(decisions_path),

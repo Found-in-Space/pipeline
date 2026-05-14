@@ -10,6 +10,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from astropy.table import Table
 
+from foundinspace.pipeline.common.ids import coerce_positive_integer_values
+
 GAIA_HIP_MAP_COLS = [
     "gaia_source_id",
     "hip_source_id",
@@ -33,19 +35,6 @@ def empty_gaia_hip_mapping() -> pd.DataFrame:
     )
 
 
-def _coerce_positive_integers(series: pd.Series) -> tuple[pd.Series, pd.Series]:
-    """Coerce a series to positive integers and return values plus validity mask."""
-    numeric = pd.to_numeric(series, errors="coerce")
-    finite = np.isfinite(numeric.to_numpy(dtype=float, copy=False))
-    integral = np.equal(
-        np.floor(numeric.to_numpy(dtype=float, copy=False)),
-        numeric.to_numpy(dtype=float, copy=False),
-    )
-    positive = numeric > 0
-    valid = finite & integral & positive.to_numpy(dtype=bool, copy=False)
-    return numeric, pd.Series(valid, index=series.index)
-
-
 def _normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
     """Lowercase column names for robust ECSV reads."""
     out = df.copy()
@@ -59,8 +48,8 @@ def build_gaia_hip_mapping_from_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if "source_id" not in df.columns or "original_ext_source_id" not in df.columns:
         return empty_gaia_hip_mapping()
 
-    gaia_numeric, gaia_valid = _coerce_positive_integers(df["source_id"])
-    hip_numeric, hip_valid = _coerce_positive_integers(df["original_ext_source_id"])
+    gaia_numeric, gaia_valid = coerce_positive_integer_values(df["source_id"])
+    hip_numeric, hip_valid = coerce_positive_integer_values(df["original_ext_source_id"])
     valid = gaia_valid & hip_valid
     if not valid.any():
         return empty_gaia_hip_mapping()

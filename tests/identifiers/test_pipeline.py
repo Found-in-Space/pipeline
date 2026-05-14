@@ -6,11 +6,11 @@ import pyarrow.parquet as pq
 from astropy.table import Table
 
 from foundinspace.pipeline.identifiers.pipeline import (
-    IDENTIFIER_OUTPUT_COLS,
     _bayer_code_to_display,
     _clean_proper_name,
     prepare_identifiers_sidecar,
 )
+from foundinspace.pipeline.identifiers.schema import IDENTIFIER_OUTPUT_COLS
 
 
 def _write_ecsv(df: pd.DataFrame, path: Path) -> None:
@@ -179,4 +179,3 @@ def test_prepare_identifiers_merges_override_yaml_identifiers(tmp_path: Path):
     assert len(sun) == 1
     assert sun["proper_name"].iloc[0] == "Sun"
     assert len(sidecar[sidecar["source"] == "hip"]) >= 1
-

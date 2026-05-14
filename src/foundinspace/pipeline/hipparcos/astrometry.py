@@ -1,12 +1,13 @@
 import numpy as np
 import pandas as pd
 
-from foundinspace.pipeline.constants import (
-    DIST_SRC_HIP,
-    FLAG_DIST_PLAUSIBLE,
-    FLAG_DIST_VALID,
-    FLAG_NEEDS_REVIEW,
+from foundinspace.pipeline.common.astrometry import (
+    fractional_parallax_error,
+    parallax_distance_pc,
+    valid_parallax_mask,
 )
+from foundinspace.pipeline.common.quality_flags import pack_distance_flags
+from foundinspace.pipeline.constants import DIST_SRC_HIP
 
 HIPPARCOS_EPOCH_JYEAR = 1991.25
 
@@ -21,30 +22,20 @@ def select_astrometry_hip(df: pd.DataFrame) -> pd.DataFrame:
     """
     plx_arr = df["Plx"].astype(float).to_numpy()
     e_plx = df["e_Plx"].astype(float).to_numpy()
-    valid = (
-        np.isfinite(plx_arr)
-        & np.isfinite(e_plx)
-        & (plx_arr > 0)
-        & (e_plx > 0)
-    )
-    f_hip = np.full(plx_arr.shape, np.nan, dtype=float)
-    np.divide(e_plx, plx_arr, out=f_hip, where=valid)
+    valid = valid_parallax_mask(plx_arr, e_plx)
+    f_hip = fractional_parallax_error(plx_arr, e_plx)
 
     df["best_source"] = "HIP"
     df["best_score"] = f_hip
     df["astrometry_quality"] = f_hip
-    dist_pc = np.full(plx_arr.shape, np.nan, dtype=float)
-    np.divide(1000.0, plx_arr, out=dist_pc, where=valid)
+    dist_pc = parallax_distance_pc(plx_arr)
     df["r_med_best"] = dist_pc
     df["distance_use_pc"] = dist_pc
-    plaus = np.isfinite(dist_pc) & (dist_pc > 0.1) & (dist_pc < 200_000)
-    flags = (
-        np.uint16(DIST_SRC_HIP)
-        | np.where(valid, FLAG_DIST_VALID, 0).astype(np.uint16)
-        | np.where(~valid, FLAG_NEEDS_REVIEW, 0).astype(np.uint16)
-        | np.where(plaus, FLAG_DIST_PLAUSIBLE, 0).astype(np.uint16)
+    df["quality_flags"] = pack_distance_flags(
+        np.full(plx_arr.shape, DIST_SRC_HIP, dtype=np.uint16),
+        distance_pc=dist_pc,
+        needs_review=~valid,
     )
-    df["quality_flags"] = flags
     df["ra_use_deg"] = df["ra_deg"].astype(float)
     df["dec_use_deg"] = df["dec_deg"].astype(float)
     df["pmra_use_masyr"] = df["pmRA"].astype(float)

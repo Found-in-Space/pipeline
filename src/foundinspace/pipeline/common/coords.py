@@ -1,10 +1,4 @@
-"""Coordinate-propagation functions for the unification pipeline.
-
-This module handles Step 6 of the pipeline:
-  - Filter rows that lack a usable distance estimate.
-  - Propagate all positions to the canonical epoch (J2016.0) using proper motions.
-  - Compute Cartesian coordinates in ICRS only (Galactocentric can be derived at export if needed).
-"""
+"""Coordinate propagation and Cartesian conversion for prepared catalog rows."""
 
 import numpy as np
 import pandas as pd
@@ -33,8 +27,8 @@ def calculate_coordinates(df: pd.DataFrame) -> pd.DataFrame:
         epoch_norm_yr                     : canonical epoch (always 2016.0)
 
     Args:
-        df: Output of filter_positional() or assign_photometry() (must have ra_use_deg, dec_use_deg,
-            distance_use_pc, pmra_use_masyr, pmdec_use_masyr, epoch_yr).
+        df: Prepared catalog rows with ra_use_deg, dec_use_deg, distance_use_pc,
+            pmra_use_masyr, pmdec_use_masyr, and epoch_yr.
 
     Returns:
         New DataFrame with coordinate columns added.

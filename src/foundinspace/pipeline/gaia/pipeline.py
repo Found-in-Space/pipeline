@@ -1,8 +1,9 @@
 """Gaia-only pipeline: stream VOTable -> {input_stem}.parquet (batched).
 
-Reads Gaia data via votpipe in 500k-row batches, runs Gaia-specific astrometry,
-photometry, filter, coordinates, mag_abs, teff, log_g; appends each non-empty
-batch to a single compressed Parquet file. No overrides; composition happens later.
+Reads Gaia data via votpipe in large batches, runs Gaia-specific astrometry,
+photometry, coordinates, absolute magnitude, and Teff preparation; appends each
+non-empty batch to a single compressed Parquet file. No overrides; composition
+happens later.
 """
 
 import gzip

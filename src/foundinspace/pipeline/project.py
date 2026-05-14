@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ _IDENTIFIERS_KEYS = {
 }
 _OVERRIDES_KEYS = {"output_parquet", "data_dir"}
 _MERGE_KEYS = {"output_dir", "healpix_order"}
+_DIST_NAME = "found-in-space-pipeline"
 
 
 def _reject_unknown_keys(raw: dict[str, Any], *, allowed: set[str], table_name: str) -> None:
@@ -232,66 +234,31 @@ def load_project(project_path: Path) -> PipelineProject:
     )
 
 
-def _render_full_project_template() -> str:
-    return (
-        f"format_version = {FORMAT_VERSION}\n\n"
-        "[gaia]\n"
-        'input_dir = "data/catalogs/gaia"\n'
-        'output_dir = "data/processed/gaia"\n'
-        '# mag_limit = 15.0\n\n'
-        "[gaia-to-hip]\n"
-        'download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"\n'
-        'output_parquet = "data/processed/gaia_hip_map.parquet"\n\n'
-        "[hip]\n"
-        'download_ecsv = "data/catalogs/hipparcos2.ecsv"\n'
-        'output_parquet = "data/processed/hip_stars.parquet"\n\n'
-        "[identifiers]\n"
-        'hip_hd_ecsv = "data/catalogs/hip_hd.ecsv"\n'
-        'iv27a_catalog_ecsv = "data/catalogs/iv27a_catalog.ecsv"\n'
-        'iv27a_proper_names_ecsv = "data/catalogs/iv27a_proper_names.ecsv"\n'
-        'output_parquet = "data/processed/identifiers_map.parquet"\n\n'
-        "[overrides]\n"
-        'output_parquet = "data/processed/overrides.parquet"\n'
-        '# data_dir = "path/to/overrides"\n\n'
-        "[merge]\n"
-        'output_dir = "data/processed/merged"\n'
-        "healpix_order = 3\n"
-    )
+def _profile_template_path(profile_name: str) -> Path:
+    name = f"{profile_name}.toml"
+    repo_profile = Path(__file__).resolve().parents[3] / "profiles" / name
+    if repo_profile.is_file():
+        return repo_profile
 
+    try:
+        dist_files = metadata.files(_DIST_NAME)
+    except metadata.PackageNotFoundError as exc:
+        raise FileNotFoundError(f"Profile template not found: {name}") from exc
 
-def _render_small_project_template() -> str:
-    return (
-        f"format_version = {FORMAT_VERSION}\n\n"
-        "[gaia]\n"
-        'input_dir = "data/catalogs/gaia-small"\n'
-        'output_dir = "data/processed/gaia-small"\n'
-        "mag_limit = 8.0\n\n"
-        "[gaia-to-hip]\n"
-        'download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"\n'
-        'output_parquet = "data/processed/gaia_hip_map.parquet"\n\n'
-        "[hip]\n"
-        'download_ecsv = "data/catalogs/hipparcos2.ecsv"\n'
-        'output_parquet = "data/processed/hip_stars.parquet"\n\n'
-        "[identifiers]\n"
-        'hip_hd_ecsv = "data/catalogs/hip_hd.ecsv"\n'
-        'iv27a_catalog_ecsv = "data/catalogs/iv27a_catalog.ecsv"\n'
-        'iv27a_proper_names_ecsv = "data/catalogs/iv27a_proper_names.ecsv"\n'
-        'output_parquet = "data/processed/identifiers_map.parquet"\n\n'
-        "[overrides]\n"
-        'output_parquet = "data/processed/overrides.parquet"\n'
-        '# data_dir = "path/to/overrides"\n\n'
-        "[merge]\n"
-        'output_dir = "data/processed/merged-small"\n'
-        "healpix_order = 3\n"
-    )
+    if dist_files is not None:
+        for dist_file in dist_files:
+            if str(dist_file).replace("\\", "/") == f"profiles/{name}":
+                located = dist_file.locate()
+                if located.is_file():
+                    return Path(located)
+
+    raise FileNotFoundError(f"Profile template not found: {name}")
 
 
 def render_project_template(profile: str = "full") -> str:
     profile_name = profile.strip().lower()
-    if profile_name == "full":
-        return _render_full_project_template()
-    if profile_name == "small":
-        return _render_small_project_template()
-    raise ValueError(
-        f"Unknown project profile {profile!r}; expected one of {', '.join(PROJECT_PROFILES)}"
-    )
+    if profile_name not in PROJECT_PROFILES:
+        raise ValueError(
+            f"Unknown project profile {profile!r}; expected one of {', '.join(PROJECT_PROFILES)}"
+        )
+    return _profile_template_path(profile_name).read_text(encoding="utf-8")

@@ -3,28 +3,16 @@
 from __future__ import annotations
 
 import re
-from contextlib import suppress
 from pathlib import Path
-from typing import Any
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from astropy.table import Table
 
-# Parquet output: compound key + cross-catalog and display identifiers.
-IDENTIFIER_OUTPUT_COLS = [
-    "source",
-    "source_id",
-    "gaia_source_id",
-    "hip_id",
-    "hd",
-    "bayer",
-    "flamsteed",
-    "constellation",
-    "proper_name",
-]
+from foundinspace.pipeline.common.ids import coerce_positive_int_series
+from foundinspace.pipeline.identifiers import schema
+from foundinspace.pipeline.overrides.identifiers import build_override_identifier_rows
 
 # Internal Vizier merge uses these working column names before reshaping.
 _VIZIER_WORK_COLS = ["hip_source_id", "hd", "bayer", "fl", "cst", "proper_name"]
@@ -62,19 +50,6 @@ _BAYER_GREEK_MAP = {
 def _read_ecsv(input_path: Path) -> pd.DataFrame:
     table = Table.read(input_path, format="ascii.ecsv")
     return table.to_pandas()
-
-
-def _coerce_positive_int(series: pd.Series) -> pd.Series:
-    numeric = pd.to_numeric(series, errors="coerce")
-    values = numeric.to_numpy(dtype=float, na_value=np.nan, copy=False)
-    finite = np.isfinite(values)
-    integral = np.equal(np.floor(values), values)
-    positive = values > 0
-    valid = finite & integral & positive
-    out = pd.Series(pd.NA, index=series.index, dtype="Int64")
-    if np.any(valid):
-        out.loc[valid] = values[valid].astype("int64")
-    return out
 
 
 def _clean_text(series: pd.Series) -> pd.Series:
@@ -127,22 +102,6 @@ def _bayer_code_to_display(bayer_code: str | None, constellation: str | None) ->
     return bayer_root
 
 
-def _empty_identifiers_out() -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "source": pd.Series(dtype="string"),
-            "source_id": pd.Series(dtype="string"),
-            "gaia_source_id": pd.Series(dtype="Int64"),
-            "hip_id": pd.Series(dtype="Int64"),
-            "hd": pd.Series(dtype="Int64"),
-            "bayer": pd.Series(dtype="string"),
-            "flamsteed": pd.Series(dtype="Int64"),
-            "constellation": pd.Series(dtype="string"),
-            "proper_name": pd.Series(dtype="string"),
-        }
-    )
-
-
 def _prepare_vizier_identifier_rows(
     hip_hd_df: pd.DataFrame,
     iv27a_catalog_df: pd.DataFrame,
@@ -150,8 +109,10 @@ def _prepare_vizier_identifier_rows(
 ) -> pd.DataFrame:
     hip_hd = hip_hd_df.copy()
     hip_hd.columns = [str(c).strip() for c in hip_hd.columns]
-    hip_hd["hip_source_id"] = _coerce_positive_int(hip_hd.get("HIP", pd.Series(pd.NA)))
-    hip_hd["hd"] = _coerce_positive_int(hip_hd.get("HD", pd.Series(pd.NA)))
+    hip_hd["hip_source_id"] = coerce_positive_int_series(
+        hip_hd.get("HIP", pd.Series(pd.NA))
+    )
+    hip_hd["hd"] = coerce_positive_int_series(hip_hd.get("HD", pd.Series(pd.NA)))
     hip_to_hd = (
         hip_hd.loc[hip_hd["hip_source_id"].notna() & hip_hd["hd"].notna(), ["hip_source_id", "hd"]]
         .drop_duplicates(subset=["hip_source_id"], keep="first")
@@ -160,7 +121,7 @@ def _prepare_vizier_identifier_rows(
 
     names = iv27a_proper_names_df.copy()
     names.columns = [str(c).strip() for c in names.columns]
-    names["hd"] = _coerce_positive_int(names.get("HD", pd.Series(pd.NA)))
+    names["hd"] = coerce_positive_int_series(names.get("HD", pd.Series(pd.NA)))
     names["proper_name"] = _clean_proper_name(names.get("Name", pd.Series(pd.NA)))
     hd_to_proper = (
         names.loc[names["hd"].notna() & names["proper_name"].notna(), ["hd", "proper_name"]]
@@ -170,9 +131,11 @@ def _prepare_vizier_identifier_rows(
 
     catalog = iv27a_catalog_df.copy()
     catalog.columns = [str(c).strip() for c in catalog.columns]
-    catalog["hip_source_id"] = _coerce_positive_int(catalog.get("HIP", pd.Series(pd.NA)))
-    catalog["hd"] = _coerce_positive_int(catalog.get("HD", pd.Series(pd.NA)))
-    catalog["fl"] = _coerce_positive_int(catalog.get("Fl", pd.Series(pd.NA)))
+    catalog["hip_source_id"] = coerce_positive_int_series(
+        catalog.get("HIP", pd.Series(pd.NA))
+    )
+    catalog["hd"] = coerce_positive_int_series(catalog.get("HD", pd.Series(pd.NA)))
+    catalog["fl"] = coerce_positive_int_series(catalog.get("Fl", pd.Series(pd.NA)))
     catalog["cst"] = _clean_text(catalog.get("Cst", pd.Series(pd.NA)))
     catalog["bayer_raw"] = _clean_text(catalog.get("Bayer", pd.Series(pd.NA)))
     catalog["bayer"] = [
@@ -205,7 +168,7 @@ def _prepare_vizier_identifier_rows(
     ].copy()
 
     if merged.empty:
-        return _empty_identifiers_out()
+        return schema.empty_identifier_frame()
 
     merged["hip_source_id"] = merged["hip_source_id"].astype("uint64")
     merged["hd"] = merged["hd"].astype("Int64")
@@ -220,7 +183,7 @@ def _prepare_vizier_identifier_rows(
     merged["hip_id"] = merged["hip_source_id"].astype("Int64")
     merged = merged.drop(columns=["hip_source_id"])
     merged["gaia_source_id"] = pd.Series(pd.NA, index=merged.index, dtype="Int64")
-    return merged[IDENTIFIER_OUTPUT_COLS]
+    return merged[schema.IDENTIFIER_OUTPUT_COLS]
 
 
 def _load_hip_to_gaia(crossmatch_parquet: Path) -> dict[int, int]:
@@ -236,60 +199,6 @@ def _load_hip_to_gaia(crossmatch_parquet: Path) -> dict[int, int]:
             continue
         out[h] = g
     return out
-
-
-def _override_identifier_rows(data_dir: Path | None) -> pd.DataFrame:
-    from foundinspace.pipeline.overrides.loader import load_parsed_override_documents
-
-    rows: list[dict[str, Any]] = []
-    for doc in load_parsed_override_documents(data_dir=data_dir):
-        stars = doc.get("stars")
-        if not isinstance(stars, list):
-            continue
-        for star in stars:
-            if not isinstance(star, dict):
-                continue
-            ident = star.get("identifiers")
-            if not ident or not isinstance(ident, dict):
-                continue
-            src = str(star.get("source", "")).strip().lower()
-            sid_raw = star.get("source_id")
-            if sid_raw is None:
-                continue
-            sid = str(sid_raw).strip()
-            row: dict[str, Any] = {
-                "source": src,
-                "source_id": sid,
-                "gaia_source_id": pd.NA,
-                "hip_id": pd.NA,
-                "hd": pd.NA,
-                "bayer": pd.NA,
-                "flamsteed": pd.NA,
-                "constellation": pd.NA,
-                "proper_name": pd.NA,
-            }
-            int_keys = ("gaia_source_id", "hip_id", "hd", "flamsteed")
-            str_keys = ("bayer", "constellation", "proper_name")
-            for k in int_keys:
-                if k in ident and ident[k] is not None and ident[k] != "":
-                    with suppress(TypeError, ValueError):
-                        row[k] = int(ident[k])
-            for k in str_keys:
-                if k in ident and ident[k] is not None and str(ident[k]).strip() != "":
-                    row[k] = str(ident[k]).strip()
-            rows.append(row)
-
-    if not rows:
-        return _empty_identifiers_out()
-
-    df = pd.DataFrame(rows)
-    df["source"] = df["source"].astype("string")
-    df["source_id"] = df["source_id"].astype("string")
-    for c in ("gaia_source_id", "hip_id", "hd", "flamsteed"):
-        df[c] = pd.to_numeric(df[c], errors="coerce").astype("Int64")
-    for c in ("bayer", "constellation", "proper_name"):
-        df[c] = df[c].astype("string")
-    return df[IDENTIFIER_OUTPUT_COLS]
 
 
 def prepare_identifiers_sidecar(
@@ -331,10 +240,10 @@ def prepare_identifiers_sidecar(
         mapped = hip_ids.map(hip_to_gaia)
         vizier_df["gaia_source_id"] = mapped.astype("Int64")
 
-    override_df = _override_identifier_rows(overrides_data_dir)
+    override_df = build_override_identifier_rows(overrides_data_dir)
 
     if vizier_df.empty and override_df.empty:
-        combined = _empty_identifiers_out()
+        combined = schema.empty_identifier_frame()
     elif override_df.empty:
         combined = vizier_df
     elif vizier_df.empty:
@@ -351,6 +260,9 @@ def prepare_identifiers_sidecar(
         )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    table = pa.Table.from_pandas(combined[IDENTIFIER_OUTPUT_COLS], preserve_index=False)
+    table = pa.Table.from_pandas(
+        combined[schema.IDENTIFIER_OUTPUT_COLS],
+        preserve_index=False,
+    )
     pq.write_table(table, str(output_path), compression="zstd")
     return output_path

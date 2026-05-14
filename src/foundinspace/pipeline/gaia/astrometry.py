@@ -1,7 +1,14 @@
 import numpy as np
 import pandas as pd
 
-from ..constants import (
+from foundinspace.pipeline.common.astrometry import (
+    finite_positive_mask,
+    fractional_distance_interval_width,
+    fractional_parallax_error,
+    parallax_distance_pc,
+)
+from foundinspace.pipeline.common.quality_flags import pack_distance_flags
+from foundinspace.pipeline.constants import (
     CANONICAL_EPOCH_JYEAR,
     DIST_SRC_BJ_GEO,
     DIST_SRC_BJ_PHOTOGEO,
@@ -12,10 +19,6 @@ from ..constants import (
     DIST_SRC_PHOTOGEO_WEAK,
     DIST_SRC_PRIOR,
     DIST_SRC_UNKNOWN,
-    EPS,
-    FLAG_DIST_PLAUSIBLE,
-    FLAG_DIST_VALID,
-    FLAG_NEEDS_REVIEW,
 )
 
 LAMBDA_PHOTO = 0.02
@@ -62,7 +65,7 @@ def _first_valid_catalog(
     dist = np.full(n, np.nan, dtype=float)
     src = np.full(n, "NONE", dtype=object)
     for arr, label in [(c, c_label), (b, b_label), (a, a_label)]:
-        ok = np.isfinite(arr) & (arr > 0)
+        ok = finite_positive_mask(arr)
         dist[ok] = arr[ok]
         src[ok] = label
     return dist, src
@@ -106,13 +109,13 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     r_lo_p = df["r_lo_photogeo"].to_numpy(dtype=float)
     r_hi_p = df["r_hi_photogeo"].to_numpy(dtype=float)
 
-    f_dr3 = eplx / np.maximum(plx, EPS)
-    f_geo = (r_hi_g - r_lo_g) / (2.0 * np.maximum(r_geo, EPS))
-    f_photogeo = (r_hi_p - r_lo_p) / (2.0 * np.maximum(r_photo, EPS))
+    f_dr3 = fractional_parallax_error(plx, eplx)
+    f_geo = fractional_distance_interval_width(r_geo, r_lo_g, r_hi_g)
+    f_photogeo = fractional_distance_interval_width(r_photo, r_lo_p, r_hi_p)
 
-    valid_dr3 = np.isfinite(f_dr3) & (plx > 0) & (eplx > 0)
-    valid_geo = np.isfinite(f_geo) & (r_geo > 0)
-    valid_photogeo = np.isfinite(f_photogeo) & (r_photo > 0)
+    valid_dr3 = np.isfinite(f_dr3)
+    valid_geo = np.isfinite(f_geo) & finite_positive_mask(r_geo)
+    valid_photogeo = np.isfinite(f_photogeo) & finite_positive_mask(r_photo)
     any_valid = valid_dr3 | valid_geo | valid_photogeo
 
     # Tier A: best quality-tested candidate
@@ -128,7 +131,7 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     score_a = cand[np.arange(len(df)), best_idx_a]
     src_a_names = _src_a[best_idx_a]
 
-    plx_dist = np.where(plx > 0, 1000.0 / np.maximum(plx, EPS), np.nan)
+    plx_dist = parallax_distance_pc(plx)
     dist_a = np.where(
         src_a_names == "DR3",
         plx_dist,
@@ -175,7 +178,6 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     distance = np.full(n, np.nan, dtype=float)
     source = np.full(n, "UNKNOWN", dtype=object)
     quality = np.full(n, np.nan, dtype=float)
-    dist_valid = np.zeros(n, dtype=bool)
     review = np.ones(n, dtype=bool)
 
     distance[tier_d_ok] = tier_d_dist[tier_d_ok]
@@ -195,7 +197,6 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     source[any_valid] = src_a_names[any_valid]
     quality[any_valid] = score_a[any_valid]
     review[any_valid] = False  # Tier A = trusted primary; B/C/D keep needs_review
-    dist_valid = np.isfinite(distance) & (distance > 0)  # usable distance (any tier)
 
     # quality_flags: dist_src + status bits (phot_src OR'd in by assign_photometry_gaia)
     dist_src_bits = np.full(n, DIST_SRC_UNKNOWN, dtype=np.uint16)
@@ -203,14 +204,11 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
         if label == "UNKNOWN":
             continue
         dist_src_bits[source == label] = val
-    valid_bit = np.where(dist_valid, FLAG_DIST_VALID, 0).astype(np.uint16)
-    review_bit = np.where(review, FLAG_NEEDS_REVIEW, 0).astype(np.uint16)
-    plaus_bit = np.where(
-        np.isfinite(distance) & (distance > 0.1) & (distance < 200_000),
-        FLAG_DIST_PLAUSIBLE,
-        0,
-    ).astype(np.uint16)
-    df["quality_flags"] = dist_src_bits | valid_bit | review_bit | plaus_bit
+    df["quality_flags"] = pack_distance_flags(
+        dist_src_bits,
+        distance_pc=distance,
+        needs_review=review,
+    )
 
     df["distance_use_pc"] = distance
     df["r_med_best"] = distance

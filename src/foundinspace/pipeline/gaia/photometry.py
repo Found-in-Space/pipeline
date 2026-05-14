@@ -1,11 +1,18 @@
 import numpy as np
 import pandas as pd
 
-from foundinspace.pipeline.common.photometry import bp_rp_to_teff, bv_to_teff
+from foundinspace.pipeline.common.photometry import (
+    absolute_magnitude_from_apparent,
+    bp_rp_to_teff,
+    bv_to_teff,
+    distance_modulus,
+)
+from foundinspace.pipeline.common.quality_flags import (
+    add_photometry_source,
+    add_teff_source,
+)
 from foundinspace.pipeline.constants import (
     PHOT_SRC_GAIA_G,
-    PHOT_SRC_MASK,
-    PHOT_SRC_SHIFT,
     PHOTOMETRY_QUALITY_DM_FACTOR,
     TEFF_DEFAULT_K,
     TEFF_SRC_BPRP,
@@ -15,7 +22,7 @@ from foundinspace.pipeline.constants import (
     TEFF_SRC_ESPUCD,
     TEFF_SRC_GSPPHOT,
     TEFF_SRC_GSPSPEC,
-    TEFF_SRC_SHIFT,
+    qf_phot_src,
 )
 
 # Effective temperature bounds used to validate Gaia Teff estimates.
@@ -155,9 +162,7 @@ def compute_teff_gaia(work: pd.DataFrame) -> pd.DataFrame:
     )
     teff_src_vals = np.asarray(teff_src_vals, dtype=np.uint16)
     flags = work["quality_flags"].astype(np.uint16).to_numpy()
-    work["quality_flags"] = (flags | (teff_src_vals << TEFF_SRC_SHIFT)).astype(
-        np.uint16
-    )
+    work["quality_flags"] = add_teff_source(flags, teff_src_vals)
 
     return work
 
@@ -232,9 +237,7 @@ def assign_photometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     df["mag"] = df["phot_g_mean_mag"].astype(float)
     df["color"] = df["bp_rp"].astype(float)
     flags = df.get("quality_flags", pd.Series(0, index=df.index)).astype(np.uint16)
-    df["quality_flags"] = (flags | (PHOT_SRC_GAIA_G << PHOT_SRC_SHIFT)).astype(
-        np.uint16
-    )
+    df["quality_flags"] = add_photometry_source(flags, PHOT_SRC_GAIA_G)
     return df
 
 
@@ -244,15 +247,19 @@ def compute_mag_abs_gaia(df: pd.DataFrame) -> pd.DataFrame:
     mag = df["mag"].astype(float)
     ag = df.get("ag_gspphot", pd.Series(np.nan, index=df.index)).astype(float)
     mg = df.get("mg_gspphot", pd.Series(np.nan, index=df.index)).astype(float)
-    dm = np.where(r_pc > 0, 5 * np.log10(r_pc / 10), np.nan)
+    dm = distance_modulus(r_pc)
 
     qf = df["quality_flags"].astype(np.uint16).to_numpy()
-    is_gaia_g = ((qf & PHOT_SRC_MASK) >> PHOT_SRC_SHIFT) == PHOT_SRC_GAIA_G
+    is_gaia_g = qf_phot_src(qf) == PHOT_SRC_GAIA_G
     ag_ok = pd.notnull(ag) & (ag >= 0) & (ag < 5)
     mg_ok = pd.notnull(mg) & np.isfinite(mg) & (mg > -10) & (mg < 15)
 
     mag_abs_gspphot = np.where(mg_ok, mg, np.nan)
-    mag_abs_ext = np.where(is_gaia_g & ag_ok, mag - dm - ag, np.nan)
+    mag_abs_ext = np.where(
+        is_gaia_g & ag_ok,
+        absolute_magnitude_from_apparent(mag, r_pc, ag),
+        np.nan,
+    )
     mag_abs_dm = mag - dm
 
     df["mag_abs"] = (

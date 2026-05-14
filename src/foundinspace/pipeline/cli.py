@@ -1,4 +1,3 @@
-# myapp/cli.py
 from importlib import import_module
 
 import click
