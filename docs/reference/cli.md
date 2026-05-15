@@ -49,8 +49,11 @@ uv run fis-pipeline overrides build --project project.toml [--force]
 
 ```bash
 uv run fis-pipeline merge build --project project.toml [--force]
+uv run fis-pipeline merge quality-report --project project.toml [--force]
 ```
 
 Writes HEALPix-partitioned Parquet under `[merge] output_dir/healpix/`,
 merge-aligned sidecars under `[merge] sidecar_output_dir`, plus
-`merge_report.json` and `merge_decisions.parquet`.
+`merge_report.json` and `merge_decisions.parquet`. The quality-report command
+adds `merge_quality_report.json` and `merge_quality_issues.parquet`, flagging
+suspicious non-overridden rows for review.

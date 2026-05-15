@@ -97,6 +97,15 @@ The merge writes dense HEALPix shards, a decision table, and a report. When Gaia
 carry-through field sets are configured, it also writes merge-aligned Gaia
 sidecars for enrichment, motion, and mass.
 
+Run the post-merge quality audit to surface suspicious non-overridden stars:
+
+```bash
+uv run fis-pipeline merge quality-report --project project.toml
+```
+
+This writes `merge_quality_report.json` and `merge_quality_issues.parquet` under
+`[merge] output_dir`.
+
 ## Useful Checks
 
 Show the resolved command surface:

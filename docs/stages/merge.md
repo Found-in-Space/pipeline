@@ -20,6 +20,12 @@ override policy, and write canonical HEALPix-partitioned output.
 uv run fis-pipeline merge build --project project.toml
 ```
 
+After a merge, write the post-merge quality audit:
+
+```bash
+uv run fis-pipeline merge quality-report --project project.toml
+```
+
 ## Outputs
 
 Under `[merge] output_dir`:
@@ -27,6 +33,8 @@ Under `[merge] output_dir`:
 - `healpix/{pixel}/*.parquet`
 - `merge_report.json`
 - `merge_decisions.parquet`
+- `merge_quality_report.json`
+- `merge_quality_issues.parquet`
 
 Under `[merge] sidecar_output_dir`, or a sibling `sidecars` directory when not
 set:
@@ -39,12 +47,14 @@ set:
 
 - `foundinspace.pipeline.merge.pipeline`
 - `foundinspace.pipeline.merge.policy`
+- `foundinspace.pipeline.merge.quality_report`
 - `foundinspace.pipeline.merge.shards`
 - `foundinspace.pipeline.merge.sidecars`
 
 ## Tests
 
 - `tests/merge/test_pipeline.py`
+- `tests/merge/test_quality_report.py`
 
 ## Learning Notes
 
