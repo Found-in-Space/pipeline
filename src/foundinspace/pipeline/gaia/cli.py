@@ -18,9 +18,12 @@ def cli():
 cli.add_command(download_cli)
 
 
-def _load_project_or_die(project_path: Path):
+def _load_project_or_die(project_path: Path, *required: str):
     try:
-        return load_project(project_path)
+        project = load_project(project_path)
+        if required:
+            project.require(*required)
+        return project
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -43,12 +46,14 @@ def build_gaia(
     project_path: Path,
     force: bool = False,
 ):
-    project = _load_project_or_die(project_path)
+    project = _load_project_or_die(project_path, "gaia")
     input_dir = project.gaia.input_dir
     if not input_dir.is_dir():
         raise click.ClickException(f"[gaia] input_dir does not exist: {input_dir}")
 
-    input_files = sorted(p for p in input_dir.iterdir() if p.is_file() and _is_votable(p))
+    input_files = sorted(
+        p for p in input_dir.iterdir() if p.is_file() and _is_votable(p)
+    )
     if not input_files:
         raise click.ClickException(f"No VOTable files found in {input_dir}")
 

@@ -15,9 +15,12 @@ def cli():
 cli.add_command(foundinspace.pipeline.gaia_to_hip.download.main, name="download")
 
 
-def _load_project_or_die(project_path: Path):
+def _load_project_or_die(project_path: Path, *required: str):
     try:
-        return load_project(project_path)
+        project = load_project(project_path)
+        if required:
+            project.require(*required)
+        return project
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -35,7 +38,7 @@ def build_cmd(
     project_path: Path,
     force: bool,
 ) -> None:
-    project = _load_project_or_die(project_path)
+    project = _load_project_or_die(project_path, "gaia-to-hip")
     download_output = project.gaia_to_hip.download_ecsv
     foundinspace.pipeline.gaia_to_hip.download.ensure_hipparcos2_best_neighbour_ecsv(
         download_output,

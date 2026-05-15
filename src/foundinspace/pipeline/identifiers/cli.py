@@ -15,19 +15,21 @@ def cli():
 cli.add_command(foundinspace.pipeline.identifiers.download.main, name="download")
 
 
-def _load_project_or_die(project_path: Path):
+def _load_project_or_die(project_path: Path, *required: str):
     try:
-        return load_project(project_path)
+        project = load_project(project_path)
+        if required:
+            project.require(*required)
+        return project
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
 
 def _crossmatch_parquet(project) -> Path | None:
     """Read crossmatch path from [gaia-to-hip] if the section and file exist."""
-    try:
-        cm = project.gaia_to_hip.output_parquet
-    except ValueError:
+    if not project.gaia_to_hip.is_configured:
         return None
+    cm = project.gaia_to_hip.output_parquet
     if not cm.is_file():
         return None
     return cm
@@ -35,10 +37,9 @@ def _crossmatch_parquet(project) -> Path | None:
 
 def _overrides_data_dir(project) -> Path | None:
     """Read data_dir from [overrides] if the section and key exist."""
-    try:
-        return project.overrides.data_dir
-    except ValueError:
+    if not project.overrides.is_configured:
         return None
+    return project.overrides.data_dir
 
 
 @cli.command(name="build")
@@ -54,7 +55,7 @@ def build(
     project_path: Path,
     force: bool,
 ) -> None:
-    project = _load_project_or_die(project_path)
+    project = _load_project_or_die(project_path, "identifiers")
     outputs = foundinspace.pipeline.identifiers.download.ensure_identifier_catalogs(
         hip_hd_output=project.identifiers.hip_hd_ecsv,
         iv27a_catalog_output=project.identifiers.iv27a_catalog_ecsv,

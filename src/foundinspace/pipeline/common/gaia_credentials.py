@@ -3,9 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-GAIA_CREDENTIALS_MESSAGE = (
-    "GAIA_CREDENTIALS_FILE or GAIA_USER plus GAIA_PASS"
-)
+GAIA_CREDENTIALS_MESSAGE = "GAIA_CREDENTIALS_FILE or GAIA_USER plus GAIA_PASS"
 
 
 def login_gaia_from_environment_if_available(gaia: Any) -> bool:

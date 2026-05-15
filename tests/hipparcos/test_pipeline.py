@@ -125,4 +125,3 @@ def test_main_writes_parquet_with_limit(tmp_path: Path):
         assert col in out.columns
     assert out["source"].iloc[0] == "hip"
     assert out["source_id"].iloc[0] == 1
-

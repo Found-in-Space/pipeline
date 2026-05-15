@@ -15,7 +15,9 @@ _YAML_SUFFIXES = (".yaml", ".yml")
 _PACKAGE_DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
-def icrs_spherical_to_cartesian_pc(ra_deg: float, dec_deg: float, r_pc: float) -> tuple[float, float, float]:
+def icrs_spherical_to_cartesian_pc(
+    ra_deg: float, dec_deg: float, r_pc: float
+) -> tuple[float, float, float]:
     """ICRS (RA, Dec, distance) to sun-centered Cartesian parsecs."""
     ra = np.deg2rad(ra_deg)
     dec = np.deg2rad(dec_deg)
@@ -93,7 +95,14 @@ def _ensure_cartesian(star: MutableMapping[str, Any]) -> None:
 def _normalize_star_dict(star: MutableMapping[str, Any]) -> None:
     action = star.get("action")
     if action == "drop":
-        required = ("override_id", "action", "source", "source_id", "override_reason", "override_policy_version")
+        required = (
+            "override_id",
+            "action",
+            "source",
+            "source_id",
+            "override_reason",
+            "override_policy_version",
+        )
         missing = [k for k in required if k not in star or star[k] is None]
         if missing:
             raise ValueError(f"drop override missing required keys: {missing}")
@@ -104,7 +113,9 @@ def _normalize_star_dict(star: MutableMapping[str, Any]) -> None:
     _ensure_cartesian(star)
 
 
-def load_parsed_override_documents(data_dir: Path | None = None) -> list[dict[str, Any]]:
+def load_parsed_override_documents(
+    data_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     """Load and parse every YAML file as a document dict (may contain `description`, `stars`)."""
     docs: list[dict[str, Any]] = []
     for path in iter_override_source_files(data_dir=data_dir):
@@ -119,7 +130,9 @@ def load_parsed_override_documents(data_dir: Path | None = None) -> list[dict[st
     return docs
 
 
-def load_normalized_override_stars(data_dir: Path | None = None) -> list[dict[str, Any]]:
+def load_normalized_override_stars(
+    data_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     """Load all stars from all YAML files, with Cartesian coordinates filled when omitted.
 
     Each item is a flat dict including override fields, optional extras from YAML,

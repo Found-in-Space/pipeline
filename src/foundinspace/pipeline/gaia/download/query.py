@@ -105,7 +105,9 @@ def validate_query_spec(spec: GaiaQuerySpec) -> None:
                 f"Gaia carry field {field.name!r} duplicates a core query column"
             )
         if "aps" in field.query_aliases and not spec.requires_aps:
-            raise ValueError(f"Internal error: aps field not reflected in spec: {field.name}")
+            raise ValueError(
+                f"Internal error: aps field not reflected in spec: {field.name}"
+            )
 
 
 def build_count_query(spec: GaiaQuerySpec) -> str:

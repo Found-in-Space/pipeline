@@ -20,7 +20,6 @@ _SECTION_NAMES = {
     "merge",
     "gaia_download",
 }
-_TOP_LEVEL_KEYS = {"format_version"} | _SECTION_NAMES
 
 _GAIA_KEYS = {"input_dir", "output_dir", "mag_limit"}
 _GAIA_DOWNLOAD_KEYS = {
@@ -51,7 +50,9 @@ GAIA_DOWNLOAD_DEFAULT_MAX_ACTIVE_JOBS = 4
 GAIA_DOWNLOAD_DEFAULT_CARRY_FIELD_SETS: tuple[str, ...] = ()
 
 
-def _reject_unknown_keys(raw: dict[str, Any], *, allowed: set[str], table_name: str) -> None:
+def _reject_unknown_keys(
+    raw: dict[str, Any], *, allowed: set[str], table_name: str
+) -> None:
     unknown = sorted(set(raw) - allowed)
     if unknown:
         raise ValueError(f"Unknown key(s) in [{table_name}]: {', '.join(unknown)}")
@@ -99,22 +100,33 @@ def _normalize_choice(
 
 
 class _SectionAccessor:
-    def __init__(self, section_name: str, raw: dict[str, Any] | None, project_dir: Path) -> None:
+    def __init__(
+        self, section_name: str, raw: dict[str, Any] | None, project_dir: Path
+    ) -> None:
         self._section = section_name
         self._raw = raw
         self._project_dir = project_dir
+
+    @property
+    def is_configured(self) -> bool:
+        """True when this section was present in the project file."""
+        return self._raw is not None
 
     def _require_path(self, key: str) -> Path:
         if self._raw is None:
             raise ValueError(f"Missing [{self._section}] table in project file")
         value = _require_str(self._raw, key, field_name=f"{self._section}.{key}")
-        return _resolve_path(self._project_dir, value, field_name=f"{self._section}.{key}")
+        return _resolve_path(
+            self._project_dir, value, field_name=f"{self._section}.{key}"
+        )
 
     def _optional_path(self, key: str) -> Path | None:
         if self._raw is None or key not in self._raw:
             return None
         value = _require_str(self._raw, key, field_name=f"{self._section}.{key}")
-        return _resolve_path(self._project_dir, value, field_name=f"{self._section}.{key}")
+        return _resolve_path(
+            self._project_dir, value, field_name=f"{self._section}.{key}"
+        )
 
     def _require_int_field(self, key: str) -> int:
         if self._raw is None:
@@ -185,7 +197,9 @@ class _SectionAccessor:
                 raise ValueError(f"{self._section}.{key} must be a list of strings")
             normalized = item.strip()
             if normalized in seen:
-                raise ValueError(f"{self._section}.{key} contains duplicate {normalized!r}")
+                raise ValueError(
+                    f"{self._section}.{key} contains duplicate {normalized!r}"
+                )
             seen.add(normalized)
             out.append(normalized)
         return tuple(out)
@@ -208,7 +222,7 @@ class GaiaConfig(_SectionAccessor):
 class GaiaDownloadConfig(_SectionAccessor):
     @property
     def configured(self) -> bool:
-        return self._raw is not None
+        return self.is_configured
 
     @property
     def mode(self) -> str:
@@ -334,6 +348,29 @@ class PipelineProject:
     overrides: OverridesConfig
     merge: MergeConfig
 
+    def require(self, *section_names: str) -> None:
+        """Raise ValueError listing all missing required sections at once."""
+        known: dict[str, _SectionAccessor] = {
+            self.gaia._section: self.gaia,
+            self.gaia_download._section: self.gaia_download,
+            self.gaia_to_hip._section: self.gaia_to_hip,
+            self.hip._section: self.hip,
+            self.identifiers._section: self.identifiers,
+            self.overrides._section: self.overrides,
+            self.merge._section: self.merge,
+        }
+        unknown = sorted(set(section_names) - set(known))
+        if unknown:
+            raise ValueError(
+                f"require() called with unknown section name(s): {', '.join(unknown)}"
+            )
+        missing = [name for name in section_names if not known[name].is_configured]
+        if missing:
+            raise ValueError(
+                "Missing required config sections: "
+                + ", ".join(f"[{name}]" for name in missing)
+            )
+
 
 def _validate_section(
     raw: dict[str, Any],
@@ -357,8 +394,6 @@ def load_project(project_path: Path) -> PipelineProject:
     if not isinstance(raw, dict):
         raise ValueError("Project file root must be a TOML table")
 
-    _reject_unknown_keys(raw, allowed=_TOP_LEVEL_KEYS, table_name="root")
-
     format_version = raw.get("format_version")
     if format_version != FORMAT_VERSION:
         raise ValueError(
@@ -378,7 +413,9 @@ def load_project(project_path: Path) -> PipelineProject:
     return PipelineProject(
         project_path=resolved_project_path,
         gaia=GaiaConfig("gaia", gaia_raw, project_dir),
-        gaia_download=GaiaDownloadConfig("gaia_download", gaia_download_raw, project_dir),
+        gaia_download=GaiaDownloadConfig(
+            "gaia_download", gaia_download_raw, project_dir
+        ),
         gaia_to_hip=GaiaToHipConfig("gaia-to-hip", gaia_to_hip_raw, project_dir),
         hip=HipConfig("hip", hip_raw, project_dir),
         identifiers=IdentifiersConfig("identifiers", identifiers_raw, project_dir),

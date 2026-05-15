@@ -175,12 +175,12 @@ def _write_derived_sidecar(
     phase_tag: str,
     seq_by_key: dict[tuple[str, int], int],
 ) -> int:
-    available = [(src, dst) for src, dst in column_map.items() if src in sidecar_df.columns]
+    available = [
+        (src, dst) for src, dst in column_map.items() if src in sidecar_df.columns
+    ]
     if not available:
         return 0
-    out = sidecar_df[
-        [*SIDECAR_ID_COLS, "_shard_ra_deg", "_shard_dec_deg"]
-    ].copy()
+    out = sidecar_df[[*SIDECAR_ID_COLS, "_shard_ra_deg", "_shard_dec_deg"]].copy()
     output_cols = list(SIDECAR_ID_COLS)
     for src, dst in available:
         out[dst] = sidecar_df[src]

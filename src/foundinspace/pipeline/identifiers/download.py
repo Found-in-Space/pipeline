@@ -92,6 +92,7 @@ def main(
 ) -> None:
     try:
         project = load_project(project_path)
+        project.require("identifiers")
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     outputs = ensure_identifier_catalogs(

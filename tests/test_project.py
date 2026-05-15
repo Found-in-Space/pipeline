@@ -16,7 +16,8 @@ from foundinspace.pipeline.project_cli import cli as project_cli
 
 
 def _project_text() -> str:
-    return """
+    return (
+        """
 format_version = 1
 
 [gaia]
@@ -42,7 +43,9 @@ output_parquet = "data/processed/overrides.parquet"
 [merge]
 output_dir = "data/processed/merged"
 healpix_order = 3
-""".strip() + "\n"
+""".strip()
+        + "\n"
+    )
 
 
 def test_load_project_resolves_relative_paths_from_project_file_dir(
@@ -59,8 +62,14 @@ def test_load_project_resolves_relative_paths_from_project_file_dir(
 
     assert project.gaia.output_dir == project_dir / "data" / "processed" / "gaia"
     assert project.gaia.mag_limit is None
-    assert project.hip.output_parquet == project_dir / "data" / "processed" / "hip_stars.parquet"
-    assert project.gaia_to_hip.download_ecsv == project_dir / "data" / "catalogs" / "gaia_hipparcos2_best_neighbour.ecsv"
+    assert (
+        project.hip.output_parquet
+        == project_dir / "data" / "processed" / "hip_stars.parquet"
+    )
+    assert (
+        project.gaia_to_hip.download_ecsv
+        == project_dir / "data" / "catalogs" / "gaia_hipparcos2_best_neighbour.ecsv"
+    )
     assert project.merge.healpix_order == 3
     assert project.merge.output_dir == project_dir / "data" / "processed" / "merged"
 
@@ -148,7 +157,10 @@ carry_field_sets = ["motion", "mass"]
     assert project.gaia_download.mode == "small"
     assert project.gaia_download.access == "auto"
     assert project.gaia_download.mag_limit == 9.0
-    assert project.gaia_download.state_db == tmp_path / "data/processed/gaia-download.sqlite"
+    assert (
+        project.gaia_download.state_db
+        == tmp_path / "data/processed/gaia-download.sqlite"
+    )
     assert project.gaia_download.row_cap == 123
     assert project.gaia_download.max_active_jobs == 2
     assert project.gaia_download.carry_field_sets == ("motion", "mass")
@@ -274,6 +286,69 @@ def test_load_project_sections_are_independent(tmp_path: Path) -> None:
     assert project.gaia.output_dir == tmp_path / "data" / "processed" / "gaia"
     with pytest.raises(ValueError, match=r"Missing \[hip\] table"):
         _ = project.hip.output_parquet
+
+
+def test_load_project_ignores_unknown_top_level_sections(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        "format_version = 1\n\n"
+        '[gaia]\noutput_dir = "data/processed/gaia"\n\n'
+        '[rezaei2024]\ncatalog_gz = "data/catalogs/finalmap.dat.gz"\n'
+        'output_bin = "data/processed/dust_map.bin"\n',
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    assert project.gaia.output_dir == tmp_path / "data" / "processed" / "gaia"
+
+
+def test_section_is_configured_tracks_section_presence(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        'format_version = 1\n\n[gaia]\noutput_dir = "data/processed/gaia"\n',
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    assert project.gaia.is_configured is True
+    assert project.gaia_download.is_configured is False
+    assert project.gaia_download.configured is False
+    assert project.hip.is_configured is False
+    assert project.merge.is_configured is False
+
+
+def test_require_succeeds_when_all_sections_present(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(_project_text(), encoding="utf-8")
+
+    project = load_project(project_path)
+
+    project.require("gaia", "hip", "merge")
+
+
+def test_require_raises_listing_missing_sections(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        'format_version = 1\n\n[gaia]\noutput_dir = "data/processed/gaia"\n',
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    with pytest.raises(ValueError, match=r"\[hip\].*\[merge\]"):
+        project.require("gaia", "hip", "merge")
+
+
+def test_require_raises_for_unknown_section_name(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(_project_text(), encoding="utf-8")
+
+    project = load_project(project_path)
+
+    with pytest.raises(ValueError, match="unknown section name"):
+        project.require("rezaei2024")
 
 
 def test_render_project_template_is_valid_toml_with_all_sections() -> None:

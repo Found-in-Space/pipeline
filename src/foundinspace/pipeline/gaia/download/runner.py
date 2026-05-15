@@ -75,7 +75,9 @@ def query_spec_from_project(project: PipelineProject) -> GaiaQuerySpec:
         and project.gaia.mag_limit is not None
         and abs(project.gaia.mag_limit - download_mag_limit) > 1e-9
     ):
-        raise ValueError("gaia.mag_limit must match gaia_download.mag_limit or be omitted")
+        raise ValueError(
+            "gaia.mag_limit must match gaia_download.mag_limit or be omitted"
+        )
     fields = load_gaia_field_sets(project.gaia_download.carry_field_sets)
     return GaiaQuerySpec(
         mode=mode,
@@ -96,7 +98,9 @@ def _resolve_access_mode(project: PipelineProject, total_rows: int) -> str:
     mode = project.gaia_download.mode
     if mode == "full":
         if access == "anonymous":
-            raise ValueError("gaia_download.access = 'anonymous' is not valid for full mode")
+            raise ValueError(
+                "gaia_download.access = 'anonymous' is not valid for full mode"
+            )
         return "authenticated"
     if access == "authenticated":
         return "authenticated"
@@ -126,7 +130,9 @@ def write_browser_queries(
 ) -> BrowserQuerySummary:
     spec = query_spec_from_project(project)
     if project.gaia_download.mode != "small":
-        raise ValueError("Browser query export is only supported for small Gaia profiles")
+        raise ValueError(
+            "Browser query export is only supported for small Gaia profiles"
+        )
 
     query_dir = output_dir or _browser_query_dir(project.gaia_download.state_db)
     query_dir.mkdir(parents=True, exist_ok=True)
@@ -151,7 +157,10 @@ def write_browser_queries(
 
 
 def _output_path_for_batch(project: PipelineProject, batch: DownloadBatch) -> Path:
-    return project.gaia.input_dir / f"gaia_{project.gaia_download.mode}_{batch.batch_id}.vot.gz"
+    return (
+        project.gaia.input_dir
+        / f"gaia_{project.gaia_download.mode}_{batch.batch_id}.vot.gz"
+    )
 
 
 def _job_name(project: PipelineProject, batch: DownloadBatch, batch_hash: str) -> str:
@@ -259,7 +268,9 @@ def _avoid_finished_batch_id_collisions(
         in {"submitted", "running", "completed_remote", "downloading", "delete_pending"}
     ]
     if active_existing:
-        raise ValueError("Cannot re-plan while Gaia jobs are active; run or resolve them first")
+        raise ValueError(
+            "Cannot re-plan while Gaia jobs are active; run or resolve them first"
+        )
     finished_ids = [
         _batch_number(batch.batch_id)
         for batch in existing_batches
@@ -267,9 +278,9 @@ def _avoid_finished_batch_id_collisions(
     ]
     if not finished_ids:
         return batches
-    next_number = max(
-        [_batch_number(batch.batch_id) for batch in existing_batches] + [0]
-    ) + 1
+    next_number = (
+        max([_batch_number(batch.batch_id) for batch in existing_batches] + [0]) + 1
+    )
     renumbered: list[DownloadBatch] = []
     for offset, batch in enumerate(batches):
         renumbered.append(
@@ -319,19 +330,25 @@ def run_gaia_download(
                     progress |= _submit_planned_batches(project, state, archive, echo)
 
                 if not progress:
-                    active = [batch for batch in state.read_batches() if _is_active(batch)]
+                    active = [
+                        batch for batch in state.read_batches() if _is_active(batch)
+                    ]
                     if not active:
                         break
                     _echo_wait_status(active, poll_seconds=poll_seconds, echo=echo)
                     time.sleep(max(0.0, poll_seconds))
         except KeyboardInterrupt:
-            echo(f"Interrupted. Gaia download state is saved in {state.path}; rerun to resume.")
+            echo(
+                f"Interrupted. Gaia download state is saved in {state.path}; rerun to resume."
+            )
             raise
 
         final_batches = state.read_batches()
         return RunSummary(
             state_db=state.path,
-            downloaded_batches=sum(batch.state == "downloaded" for batch in final_batches),
+            downloaded_batches=sum(
+                batch.state == "downloaded" for batch in final_batches
+            ),
             deleted_remote_batches=sum(
                 batch.state == "deleted_remote" for batch in final_batches
             ),
@@ -401,7 +418,9 @@ def _download_completed_batches(
         tmp_path = batch.output_path.with_name(batch.output_path.name + ".tmp")
         if batch.output_path.exists():
             _verify_votable_gzip(batch.output_path)
-            state.mark_downloaded(batch, downloaded_bytes=batch.output_path.stat().st_size)
+            state.mark_downloaded(
+                batch, downloaded_bytes=batch.output_path.stat().st_size
+            )
             echo(f"Gaia {batch.batch_id}: existing output verified")
             progress = True
             continue
@@ -540,7 +559,9 @@ def _can_submit_batch(
         try:
             _verify_votable_gzip(batch.output_path)
         except Exception as exc:
-            raise ValueError(f"Existing Gaia output is not valid: {batch.output_path}") from exc
+            raise ValueError(
+                f"Existing Gaia output is not valid: {batch.output_path}"
+            ) from exc
         state.mark_downloaded(batch, downloaded_bytes=batch.output_path.stat().st_size)
         echo(f"Gaia {batch.batch_id}: existing output verified")
         return False
@@ -549,7 +570,11 @@ def _can_submit_batch(
         return True
 
     current = state.read_batches()
-    active = [item for item in current if item.access_mode == "authenticated" and _is_active(item)]
+    active = [
+        item
+        for item in current
+        if item.access_mode == "authenticated" and _is_active(item)
+    ]
     if len(active) >= project.gaia_download.max_active_jobs:
         return False
     remote_bytes = sum(item.estimated_result_bytes for item in active)

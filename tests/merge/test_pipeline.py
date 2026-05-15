@@ -22,7 +22,9 @@ from foundinspace.pipeline.merge.policy import (
 
 def _write_parquet(df: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pandas(df, preserve_index=False), str(path), compression="zstd")
+    pq.write_table(
+        pa.Table.from_pandas(df, preserve_index=False), str(path), compression="zstd"
+    )
 
 
 def _with_radec_r_pc(row: dict) -> dict:
@@ -330,7 +332,9 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
     assert len(decisions_df) >= 5
     assert "override_no_effect" in set(decisions_df["decision_type"].astype(str))
 
-    report_json = json.loads((output_dir / "merge_report.json").read_text(encoding="utf-8"))
+    report_json = json.loads(
+        (output_dir / "merge_report.json").read_text(encoding="utf-8")
+    )
     assert report_json["rows_emitted_total"] == 7
     assert report_json["healpix_order"] == 1
     assert report_json["gaia_dir"] == str(gaia_dir)
@@ -503,6 +507,7 @@ def test_run_merge_writes_gaia_enrichment_sidecars_for_hip_winner(tmp_path: Path
 # ---------------------------------------------------------------------------
 # V2 policy unit tests for _choose_matched_winner
 # ---------------------------------------------------------------------------
+
 
 def _gaia_row(score: float, *, phot_g_mean_mag: float | None = None, **kw) -> dict:
     row: dict = {"astrometry_quality": score}

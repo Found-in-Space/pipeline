@@ -33,7 +33,9 @@ class _FakeArchive:
         assert "SELECT" in query
         job_id = f"job-{len(self.submitted) + 1}"
         self.submitted.append(job_id)
-        return ArchiveJobInfo(job_id=job_id, job_url=f"https://example.test/{job_id}", phase="PENDING")
+        return ArchiveJobInfo(
+            job_id=job_id, job_url=f"https://example.test/{job_id}", phase="PENDING"
+        )
 
     def poll_phase(self, job_id: str, *, access_mode: str):
         return "COMPLETED"
@@ -64,9 +66,11 @@ class _DeleteFailsArchive(_FakeArchive):
         raise RuntimeError("temporary delete failure")
 
 
-def _write_project(tmp_path: Path, *, mode: str = "small", access: str = "auto") -> Path:
+def _write_project(
+    tmp_path: Path, *, mode: str = "small", access: str = "auto"
+) -> Path:
     project_path = tmp_path / "project.toml"
-    mag_limit = 'mag_limit = 9.0\n' if mode == "small" else ""
+    mag_limit = "mag_limit = 9.0\n" if mode == "small" else ""
     project_path.write_text(
         f"""
 format_version = 1
@@ -110,7 +114,9 @@ healpix_order = 3
     return project_path
 
 
-def test_plan_and_run_small_anonymous_download_with_fake_archive(tmp_path: Path) -> None:
+def test_plan_and_run_small_anonymous_download_with_fake_archive(
+    tmp_path: Path,
+) -> None:
     project = load_project(_write_project(tmp_path))
     archive = _FakeArchive()
 
@@ -130,7 +136,9 @@ def test_plan_and_run_small_anonymous_download_with_fake_archive(tmp_path: Path)
 
 
 def test_authenticated_run_deletes_remote_job_after_download(tmp_path: Path) -> None:
-    project = load_project(_write_project(tmp_path, mode="full", access="authenticated"))
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
     archive = _FakeArchive()
 
     plan = plan_gaia_download(project, archive_client=archive, echo=lambda _msg: None)
@@ -150,7 +158,9 @@ def test_authenticated_delete_pending_is_retried_on_resume(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    project = load_project(_write_project(tmp_path, mode="full", access="authenticated"))
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
     failing_archive = _DeleteFailsArchive()
     messages: list[str] = []
 

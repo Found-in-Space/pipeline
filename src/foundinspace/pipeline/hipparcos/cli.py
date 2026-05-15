@@ -15,9 +15,12 @@ def cli():
 cli.add_command(foundinspace.pipeline.hipparcos.download.main, name="download")
 
 
-def _load_project_or_die(project_path: Path):
+def _load_project_or_die(project_path: Path, *required: str):
     try:
-        return load_project(project_path)
+        project = load_project(project_path)
+        if required:
+            project.require(*required)
+        return project
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -37,7 +40,7 @@ def build_cmd(
     force: bool,
     limit: int | None,
 ) -> None:
-    project = _load_project_or_die(project_path)
+    project = _load_project_or_die(project_path, "hip")
     input_file = foundinspace.pipeline.hipparcos.download.ensure_hipparcos_ecsv(
         project.hip.download_ecsv,
         force=force,

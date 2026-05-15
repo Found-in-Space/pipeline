@@ -18,9 +18,12 @@ def cli() -> None:
     """Plan and run Gaia Archive source downloads."""
 
 
-def _load_project_or_die(project_path: Path):
+def _load_project_or_die(project_path: Path, *required: str):
     try:
-        return load_project(project_path)
+        project = load_project(project_path)
+        if required:
+            project.require(*required)
+        return project
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -41,7 +44,7 @@ def _load_project_or_die(project_path: Path):
 )
 def plan(project_path: Path, refresh_counts: bool) -> None:
     """Write or refresh the resumable Gaia download plan."""
-    project = _load_project_or_die(project_path)
+    project = _load_project_or_die(project_path, "gaia", "gaia_download")
     try:
         summary = plan_gaia_download(
             project,
@@ -69,7 +72,7 @@ def plan(project_path: Path, refresh_counts: bool) -> None:
 )
 def queries(project_path: Path, output_dir: Path | None) -> None:
     """Write small-profile ADQL files for the Gaia browser UI."""
-    project = _load_project_or_die(project_path)
+    project = _load_project_or_die(project_path, "gaia", "gaia_download")
     try:
         summary = write_browser_queries(
             project,
@@ -98,7 +101,7 @@ def queries(project_path: Path, output_dir: Path | None) -> None:
 )
 def run(project_path: Path, poll_seconds: float) -> None:
     """Resume or execute a Gaia download plan."""
-    project = _load_project_or_die(project_path)
+    project = _load_project_or_die(project_path, "gaia", "gaia_download")
     try:
         summary = run_gaia_download(
             project,

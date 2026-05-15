@@ -25,7 +25,9 @@ def _write_crossmatch(path: Path, rows: list[tuple[int, int]]) -> None:
     )
     df["mapping_source"] = "test"
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pandas(df, preserve_index=False), str(path), compression="zstd")
+    pq.write_table(
+        pa.Table.from_pandas(df, preserve_index=False), str(path), compression="zstd"
+    )
 
 
 def test_bayer_code_display_normalizes_greek_and_suffixes():
@@ -130,14 +132,20 @@ def test_prepare_identifiers_sidecar_writes_compound_key_and_gaia_ids(tmp_path: 
 
     assert list(sidecar.columns) == IDENTIFIER_OUTPUT_COLS
     assert sidecar.loc[sidecar["source_id"] == "1", "proper_name"].iloc[0] == "Sirius"
-    assert int(sidecar.loc[sidecar["source_id"] == "1", "gaia_source_id"].iloc[0]) == 100
+    assert (
+        int(sidecar.loc[sidecar["source_id"] == "1", "gaia_source_id"].iloc[0]) == 100
+    )
     assert sidecar.loc[sidecar["source_id"] == "3", "hd"].iloc[0] == 30
     assert sidecar.loc[sidecar["source_id"] == "3", "bayer"].iloc[0] == "alpha Cas"
     assert sidecar.loc[sidecar["source_id"] == "3", "proper_name"].iloc[0] == "Schedar"
-    assert int(sidecar.loc[sidecar["source_id"] == "3", "gaia_source_id"].iloc[0]) == 300
+    assert (
+        int(sidecar.loc[sidecar["source_id"] == "3", "gaia_source_id"].iloc[0]) == 300
+    )
     assert sidecar.loc[sidecar["source_id"] == "4", "bayer"].isna().iloc[0]
     assert sidecar.loc[sidecar["source_id"] == "4", "proper_name"].iloc[0] == "Deneb"
-    assert int(sidecar.loc[sidecar["source_id"] == "4", "gaia_source_id"].iloc[0]) == 400
+    assert (
+        int(sidecar.loc[sidecar["source_id"] == "4", "gaia_source_id"].iloc[0]) == 400
+    )
 
 
 def test_prepare_identifiers_merges_override_yaml_identifiers(tmp_path: Path):
@@ -150,7 +158,9 @@ def test_prepare_identifiers_merges_override_yaml_identifiers(tmp_path: Path):
 
     _write_ecsv(pd.DataFrame({"HIP": [1], "HD": [10]}), hip_hd_path)
     _write_ecsv(
-        pd.DataFrame({"HIP": [1], "HD": [10], "Bayer": ["alp"], "Fl": [1], "Cst": ["Cas"]}),
+        pd.DataFrame(
+            {"HIP": [1], "HD": [10], "Bayer": ["alp"], "Fl": [1], "Cst": ["Cas"]}
+        ),
         catalog_path,
     )
     _write_ecsv(pd.DataFrame({"HD": [10], "Name": ["Sirius"]}), proper_path)

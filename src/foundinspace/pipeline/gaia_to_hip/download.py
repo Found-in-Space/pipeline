@@ -92,6 +92,7 @@ def ensure_hipparcos2_best_neighbour_ecsv(
 def main(project_path: Path, force: bool) -> None:
     try:
         project = load_project(project_path)
+        project.require("gaia-to-hip")
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     path = ensure_hipparcos2_best_neighbour_ecsv(

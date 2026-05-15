@@ -49,7 +49,9 @@ def build_gaia_hip_mapping_from_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         return empty_gaia_hip_mapping()
 
     gaia_numeric, gaia_valid = coerce_positive_integer_values(df["source_id"])
-    hip_numeric, hip_valid = coerce_positive_integer_values(df["original_ext_source_id"])
+    hip_numeric, hip_valid = coerce_positive_integer_values(
+        df["original_ext_source_id"]
+    )
     valid = gaia_valid & hip_valid
     if not valid.any():
         return empty_gaia_hip_mapping()

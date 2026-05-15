@@ -83,7 +83,9 @@ def _parse_field(raw: dict[str, Any], *, field_set: str, index: int) -> GaiaCarr
 
     dtype = _require_string(raw, "dtype", label=label)
     if dtype not in _VALID_DTYPES:
-        raise ValueError(f"{label}.dtype must be one of {', '.join(sorted(_VALID_DTYPES))}")
+        raise ValueError(
+            f"{label}.dtype must be one of {', '.join(sorted(_VALID_DTYPES))}"
+        )
 
     sidecar = _require_string(raw, "sidecar", label=label)
     if not _IDENTIFIER_RE.match(sidecar):
@@ -129,7 +131,9 @@ def _parse_field(raw: dict[str, Any], *, field_set: str, index: int) -> GaiaCarr
 def load_gaia_field_set(name: str) -> tuple[GaiaCarryField, ...]:
     field_set = name.strip()
     if not _IDENTIFIER_RE.match(field_set):
-        raise ValueError(f"Gaia field set name must be a lowercase identifier: {name!r}")
+        raise ValueError(
+            f"Gaia field set name must be a lowercase identifier: {name!r}"
+        )
 
     path = _field_set_path(field_set)
     with path.open("rb") as fp:
@@ -145,13 +149,17 @@ def load_gaia_field_set(name: str) -> tuple[GaiaCarryField, ...]:
             raise ValueError(f"{field_set}.fields[{index}] must be a TOML table")
         field = _parse_field(item, field_set=field_set, index=index)
         if field.name in seen:
-            raise ValueError(f"Gaia field set {field_set!r} duplicates field {field.name!r}")
+            raise ValueError(
+                f"Gaia field set {field_set!r} duplicates field {field.name!r}"
+            )
         seen.add(field.name)
         fields.append(field)
     return tuple(fields)
 
 
-def load_gaia_field_sets(names: tuple[str, ...] | list[str]) -> tuple[GaiaCarryField, ...]:
+def load_gaia_field_sets(
+    names: tuple[str, ...] | list[str],
+) -> tuple[GaiaCarryField, ...]:
     fields: list[GaiaCarryField] = []
     seen_fields: dict[str, str] = {}
     for name in names:

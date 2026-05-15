@@ -311,7 +311,9 @@ class GaiaDownloadState:
         )
         self._conn.commit()
 
-    def mark_phase(self, batch_id: str, *, phase: str, state: str | None = None) -> None:
+    def mark_phase(
+        self, batch_id: str, *, phase: str, state: str | None = None
+    ) -> None:
         updates: dict[str, Any] = {
             "phase": phase,
             "last_polled_at": utc_now_iso(),
@@ -371,7 +373,9 @@ class GaiaDownloadState:
             },
         )
 
-    def mark_failed(self, batch_id: str, *, phase: str | None, error_message: str) -> None:
+    def mark_failed(
+        self, batch_id: str, *, phase: str | None, error_message: str
+    ) -> None:
         self._update(
             batch_id,
             {

@@ -103,7 +103,9 @@ class GaiaArchiveClient:
             return f"Gaia async job not found: {job_id}"
         try:
             error = job.get_error(verbose=False)
-        except Exception as exc:  # pragma: no cover - depends on archive response object
+        except (
+            Exception
+        ) as exc:  # pragma: no cover - depends on archive response object
             return str(exc)
         return str(error)
 

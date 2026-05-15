@@ -68,7 +68,9 @@ def _clean_proper_name(series: pd.Series) -> pd.Series:
     return out
 
 
-def _bayer_code_to_display(bayer_code: str | None, constellation: str | None) -> str | None:
+def _bayer_code_to_display(
+    bayer_code: str | None, constellation: str | None
+) -> str | None:
     if bayer_code is None or pd.isna(bayer_code):
         return None
     base = str(bayer_code).strip().rstrip(".")
@@ -114,7 +116,10 @@ def _prepare_vizier_identifier_rows(
     )
     hip_hd["hd"] = coerce_positive_int_series(hip_hd.get("HD", pd.Series(pd.NA)))
     hip_to_hd = (
-        hip_hd.loc[hip_hd["hip_source_id"].notna() & hip_hd["hd"].notna(), ["hip_source_id", "hd"]]
+        hip_hd.loc[
+            hip_hd["hip_source_id"].notna() & hip_hd["hd"].notna(),
+            ["hip_source_id", "hd"],
+        ]
         .drop_duplicates(subset=["hip_source_id"], keep="first")
         .reset_index(drop=True)
     )
@@ -124,7 +129,9 @@ def _prepare_vizier_identifier_rows(
     names["hd"] = coerce_positive_int_series(names.get("HD", pd.Series(pd.NA)))
     names["proper_name"] = _clean_proper_name(names.get("Name", pd.Series(pd.NA)))
     hd_to_proper = (
-        names.loc[names["hd"].notna() & names["proper_name"].notna(), ["hd", "proper_name"]]
+        names.loc[
+            names["hd"].notna() & names["proper_name"].notna(), ["hd", "proper_name"]
+        ]
         .drop_duplicates(subset=["hd"], keep="first")
         .reset_index(drop=True)
     )

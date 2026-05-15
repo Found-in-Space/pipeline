@@ -47,4 +47,3 @@ def test_prepare_overrides_parquet_roundtrip(tmp_path: Path):
     assert len(pdf) >= 1
     for col in OUTPUT_COLS:
         assert col in pdf.columns
-

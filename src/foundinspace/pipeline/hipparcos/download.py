@@ -69,6 +69,7 @@ def ensure_hipparcos_ecsv(
 def main(project_path: Path, force: bool) -> None:
     try:
         project = load_project(project_path)
+        project.require("hip")
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     path = ensure_hipparcos_ecsv(project.hip.download_ecsv, force=force)
