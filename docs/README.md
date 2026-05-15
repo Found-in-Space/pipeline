@@ -30,3 +30,7 @@ Each stage has a short ownership page:
 - [Merge](stages/merge.md)
 
 For command details, see [reference/cli.md](reference/cli.md).
+
+## Planning Notes
+
+- [Gaia download and sidecars](planning/gaia-download-and-sidecars.md)
