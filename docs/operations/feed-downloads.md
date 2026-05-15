@@ -34,6 +34,10 @@ If `[gaia-to-hip].download_ecsv` is missing, the command downloads
 `gaiadr3.hipparcos2_best_neighbour` and writes the processed Parquet sidecar.
 The merge uses this sidecar to compare matched Gaia and Hipparcos rows.
 
+When Gaia credentials are available through `GAIA_CREDENTIALS_FILE` or
+`GAIA_USER`/`GAIA_PASS`, this download logs in and uses authenticated Gaia
+Archive access. Without those variables it still works anonymously.
+
 ## 3. Identifiers
 
 Build the sparse name/designation sidecar:
@@ -89,8 +93,9 @@ Once all staged inputs exist, run:
 uv run fis-pipeline merge build --project project.toml
 ```
 
-The merge writes dense HEALPix shards, a decision table, a report, and
-merge-aligned Gaia sidecars for enrichment, motion, and mass.
+The merge writes dense HEALPix shards, a decision table, and a report. When Gaia
+carry-through field sets are configured, it also writes merge-aligned Gaia
+sidecars for enrichment, motion, and mass.
 
 ## Useful Checks
 

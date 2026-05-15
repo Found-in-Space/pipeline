@@ -17,6 +17,8 @@ The templates are checked in under [../profiles](../profiles).
 - processed catalog outputs under `data/processed/`
 - Gaia VOTable input under `data/catalogs/gaia`
 - merged output under `data/processed/merged`
+- no Gaia magnitude limit
+- enriched Gaia carry-through field sets: `motion` and `mass`
 
 This is the profile used by:
 
@@ -28,8 +30,9 @@ uv run fis-pipeline project init project.toml
 
 `small` is for learning and quick iteration with real data. It keeps all paths
 under `data/catalogs/` and `data/processed/`, sets the Gaia download and local
-build magnitude limits to `G <= 9`, and uses a separate Gaia input/output
-directory so small runs do not collide with full local outputs.
+build magnitude limits to `G <= 9`, uses only core Gaia pipeline fields, and
+uses a separate Gaia input/output directory so small runs do not collide with
+full local outputs.
 
 The non-Gaia pieces are already automated:
 
@@ -64,5 +67,10 @@ Gaia anonymous async jobs can fail when the Archive's anonymous storage quota is
 already full, even for a small query. If that happens, retry later or use an
 authenticated Gaia Archive account with `GAIA_CREDENTIALS_FILE` or
 `GAIA_USER`/`GAIA_PASS`.
+
+To try another magnitude limit, start from `small` and edit the generated
+project file. For example, change both `[gaia].mag_limit` and
+`[gaia_download].mag_limit` to `10.0`, then run `gaia download plan` to get an
+exact row count before downloading anything.
 
 No sample catalog data should be committed for either profile.

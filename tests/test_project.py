@@ -155,6 +155,24 @@ carry_field_sets = ["motion", "mass"]
     assert project.merge.sidecar_output_dir == tmp_path / "data/processed/sidecars"
 
 
+def test_load_project_gaia_download_defaults_to_no_carry_fields(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text()
+        + """
+[gaia_download]
+mode = "small"
+mag_limit = 9.0
+state_db = "data/processed/gaia-download.sqlite"
+""",
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    assert project.gaia_download.carry_field_sets == ()
+
+
 def test_load_project_rejects_unknown_keys_in_merge(tmp_path: Path) -> None:
     project_path = tmp_path / "project.toml"
     project_path.write_text(
@@ -312,6 +330,7 @@ def test_render_project_template_small_profile_sets_mag_limit() -> None:
     assert parsed["gaia"]["mag_limit"] == 9.0
     assert parsed["gaia_download"]["mode"] == "small"
     assert parsed["gaia_download"]["mag_limit"] == 9.0
+    assert parsed["gaia_download"]["carry_field_sets"] == []
     assert parsed["merge"]["output_dir"] == "data/processed/merged-small"
 
 

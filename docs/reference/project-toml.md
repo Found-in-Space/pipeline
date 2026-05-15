@@ -20,6 +20,7 @@ Optional unless you use `fis-pipeline gaia download ...`.
 - `row_cap`: target maximum rows per authenticated batch.
 - `max_active_jobs`: maximum authenticated Gaia jobs to keep in flight.
 - `carry_field_sets`: checked-in Gaia field sets to preserve for sidecars.
+  Defaults to `[]`; the `full` profile opts into `["motion", "mass"]`.
 
 ## `[gaia-to-hip]`
 

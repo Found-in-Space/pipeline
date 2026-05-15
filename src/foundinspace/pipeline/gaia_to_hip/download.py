@@ -7,6 +7,9 @@ from pathlib import Path
 import click
 from astropy.table import Table
 
+from foundinspace.pipeline.common.gaia_credentials import (
+    login_gaia_from_environment_if_available,
+)
 from foundinspace.pipeline.project import load_project
 
 BEST_NEIGHBOUR_QUERY = """
@@ -19,10 +22,14 @@ FROM gaiadr3.hipparcos2_best_neighbour
 """
 
 
-def _launch_gaia_job_async(query: str):
-    from astroquery.gaia import Gaia
+def _launch_gaia_job_async(query: str, gaia_client=None):
+    if gaia_client is None:
+        from astroquery.gaia import Gaia
 
-    return Gaia.launch_job_async(query)
+        gaia_client = Gaia
+
+    login_gaia_from_environment_if_available(gaia_client)
+    return gaia_client.launch_job_async(query)
 
 
 def fetch_hipparcos2_best_neighbour_to_ecsv(

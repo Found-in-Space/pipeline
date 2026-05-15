@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from foundinspace.pipeline.common.gaia_credentials import (
+    GAIA_CREDENTIALS_MESSAGE,
+    login_gaia_from_environment_if_available,
+)
 from foundinspace.pipeline.gaia.download.planner import HealpixCount
 
 
@@ -34,22 +37,12 @@ class GaiaArchiveClient:
         if self._logged_in:
             return
         gaia = self._gaia()
-        credentials_file = os.environ.get("GAIA_CREDENTIALS_FILE")
-        if credentials_file:
-            gaia.login(credentials_file=credentials_file)
-            self._logged_in = True
-            return
-
-        user = os.environ.get("GAIA_USER")
-        password = os.environ.get("GAIA_PASS")
-        if user and password:
-            gaia.login(user=user, password=password)
+        if login_gaia_from_environment_if_available(gaia):
             self._logged_in = True
             return
 
         raise GaiaCredentialsError(
-            "Authenticated Gaia downloads require GAIA_CREDENTIALS_FILE or "
-            "GAIA_USER plus GAIA_PASS"
+            f"Authenticated Gaia downloads require {GAIA_CREDENTIALS_MESSAGE}"
         )
 
     def run_count_query(

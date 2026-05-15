@@ -61,8 +61,9 @@ Merge the staged catalogs:
 uv run fis-pipeline merge build --project project.toml
 ```
 
-The merge writes dense HEALPix shards plus Gaia enrichment, motion, and mass
-sidecars. For Gaia download details, credentials, and resume behavior, see
+The small profile writes dense HEALPix shards from core fields. The full profile
+also carries Gaia enrichment into motion and mass sidecars. For Gaia download
+details, credentials, and resume behavior, see
 [operations/gaia-download.md](operations/gaia-download.md).
 
 ## Learn by Stage

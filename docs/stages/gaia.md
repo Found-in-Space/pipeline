@@ -11,6 +11,8 @@ Parquet files.
 - VOTable files in `[gaia] input_dir`.
 - Optional `[gaia] mag_limit` for a local apparent-magnitude filter.
 - Optional `[gaia_download] carry_field_sets` for enrichment sidecar columns.
+  The small profile leaves this empty; the full profile enables `motion` and
+  `mass`.
 
 ## Command
 

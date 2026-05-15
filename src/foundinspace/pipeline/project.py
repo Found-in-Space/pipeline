@@ -48,7 +48,7 @@ GAIA_DOWNLOAD_MODES = ("small", "full")
 GAIA_DOWNLOAD_ACCESS_MODES = ("auto", "anonymous", "authenticated")
 GAIA_DOWNLOAD_DEFAULT_ROW_CAP = 55_000_000
 GAIA_DOWNLOAD_DEFAULT_MAX_ACTIVE_JOBS = 4
-GAIA_DOWNLOAD_DEFAULT_CARRY_FIELD_SETS = ("motion", "mass")
+GAIA_DOWNLOAD_DEFAULT_CARRY_FIELD_SETS: tuple[str, ...] = ()
 
 
 def _reject_unknown_keys(raw: dict[str, Any], *, allowed: set[str], table_name: str) -> None:

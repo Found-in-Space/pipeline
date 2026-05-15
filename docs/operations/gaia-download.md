@@ -32,12 +32,16 @@ The small profile defaults to:
 mode = "small"
 access = "auto"
 mag_limit = 9.0
-carry_field_sets = ["motion", "mass"]
+carry_field_sets = []
 ```
 
 `access = "auto"` uses anonymous Gaia Archive jobs when the counted row total
 fits the anonymous cap. If the query is too large, the downloader switches to
 authenticated access.
+
+The small profile uses core Gaia pipeline fields only. The full profile has no
+magnitude limit and explicitly enables the enriched `motion` and `mass` carry
+field sets.
 
 For unattended authenticated runs, set one of:
 
@@ -49,6 +53,10 @@ export GAIA_PASS=...
 
 `GAIA_CREDENTIALS_FILE` takes precedence over `GAIA_USER` and `GAIA_PASS`.
 Commands never prompt for credentials.
+
+The Gaia-to-Hipparcos crossmatch downloader uses the same environment variables
+opportunistically: it logs in when credentials are available and otherwise falls
+back to anonymous access.
 
 ## 3. Optional Browser Path
 
@@ -113,10 +121,10 @@ Once VOTables exist under `[gaia] input_dir`, build the staged Gaia Parquet:
 uv run fis-pipeline gaia build --project project-small.toml
 ```
 
-The dense Gaia output schema remains stable. Configured carry-through fields are
-written as nullable `gaia_*` columns for merge sidecars. Missing carry-through
-fields in manually supplied or older VOTables become null columns rather than
-build failures.
+The dense Gaia output schema remains stable. When carry-through field sets are
+configured, those fields are written as nullable `gaia_*` columns for merge
+sidecars. Missing carry-through fields in manually supplied or older VOTables
+become null columns rather than build failures.
 
 Gaia VOTable parsing requires `votpipe >= 0.2.1`, which supports
 variable-length VOTable character arrays used by fields such as `flags_flame`.
@@ -129,11 +137,12 @@ After the other stages are built, merge:
 uv run fis-pipeline merge build --project project-small.toml
 ```
 
-`merge build` writes compact dense HEALPix shards under `[merge].output_dir` and
-merge-aligned sidecars under `[merge].sidecar_output_dir` or, if omitted, a
-`sidecars` directory beside `[merge].output_dir`.
+`merge build` writes compact dense HEALPix shards under `[merge].output_dir`.
+When Gaia carry-through fields are configured, it also writes merge-aligned
+sidecars under `[merge].sidecar_output_dir` or, if omitted, a `sidecars`
+directory beside `[merge].output_dir`.
 
-The default Gaia carry field sets produce:
+The full profile's Gaia carry field sets produce:
 
 ```text
 gaia_enrichment/
