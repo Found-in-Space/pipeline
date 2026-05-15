@@ -48,7 +48,7 @@ uv run fis-pipeline overrides build --project project.toml [--force]
 ## Merge
 
 ```bash
-uv run fis-pipeline merge build --project project.toml [--force]
+uv run fis-pipeline merge build --project project.toml [--crossmatch-path PATH] [--force]
 uv run fis-pipeline merge quality-report --project project.toml [--force]
 ```
 
@@ -57,3 +57,6 @@ merge-aligned sidecars under `[merge] sidecar_output_dir`, plus
 `merge_report.json` and `merge_decisions.parquet`. The quality-report command
 adds `merge_quality_report.json` and `merge_quality_issues.parquet`, flagging
 suspicious non-overridden rows for review.
+
+`--crossmatch-path` lets curated catalog releases supply a combined Gaia-HIP
+mapping file. When omitted, merge uses `[gaia-to-hip] output_parquet`.

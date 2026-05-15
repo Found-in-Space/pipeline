@@ -30,9 +30,16 @@ def _load_project_or_die(project_path: Path, *required: str):
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Path to pipeline project TOML.",
 )
+@click.option(
+    "--crossmatch-path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Override Gaia/HIP crossmatch path; defaults to [gaia-to-hip] output.",
+)
 @click.option("--force", "-f", is_flag=True, default=False)
 def build(
     project_path: Path,
+    crossmatch_path: Path | None,
     force: bool,
 ) -> None:
     """Run the streaming merge and emit HEALPix-partitioned outputs."""
@@ -45,10 +52,11 @@ def build(
         "overrides",
     )
     output_dir = project.merge.output_dir
+    resolved_crossmatch_path = crossmatch_path or project.gaia_to_hip.output_parquet
     report = run_merge(
         gaia_dir=project.gaia.output_dir,
         hip_path=project.hip.output_parquet,
-        crossmatch_path=project.gaia_to_hip.output_parquet,
+        crossmatch_path=resolved_crossmatch_path,
         overrides_path=project.overrides.output_parquet,
         output_dir=output_dir,
         sidecar_output_dir=project.merge.sidecar_output_dir,

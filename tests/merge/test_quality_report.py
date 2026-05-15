@@ -244,6 +244,9 @@ def test_quality_report_flags_suspicious_non_overridden_rows(tmp_path: Path):
     }
     assert "302" not in set(issues["source_id"].astype(str))
     assert set(issues["label"]) == {"Test Pair", "Extreme Star"}
+    extreme = issues.loc[issues["issue_type"] == "merged_row_extreme"].iloc[0]
+    assert extreme["merged_ra_deg"] == 0.0
+    assert extreme["merged_dec_deg"] == 0.0
 
     report_json = json.loads(
         (merge_dir / "merge_quality_report.json").read_text(encoding="utf-8")

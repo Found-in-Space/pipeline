@@ -331,6 +331,8 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
     decisions_df = pd.read_parquet(output_dir / "merge_decisions.parquet")
     assert len(decisions_df) >= 5
     assert "override_no_effect" in set(decisions_df["decision_type"].astype(str))
+    score_decisions = decisions_df[decisions_df["decision_type"].astype(str) == "score"]
+    assert set(score_decisions["mapping_source"].astype(str)) == {"test"}
 
     report_json = json.loads(
         (output_dir / "merge_report.json").read_text(encoding="utf-8")

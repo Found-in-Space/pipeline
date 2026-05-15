@@ -20,6 +20,13 @@ override policy, and write canonical HEALPix-partitioned output.
 uv run fis-pipeline merge build --project project.toml
 ```
 
+For curated catalog releases, pass a combined Gaia-HIP map:
+
+```bash
+uv run fis-pipeline merge build --project project.toml \
+  --crossmatch-path path/to/combined_gaia_hip_map.parquet
+```
+
 After a merge, write the post-merge quality audit:
 
 ```bash

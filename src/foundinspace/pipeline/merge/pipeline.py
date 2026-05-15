@@ -34,6 +34,7 @@ MERGE_BATCH_SIZE = 1_000_000
 _GAIA_AUX_COLS = ["ruwe", "phot_g_mean_mag"]
 _HIP_AUX_COLS = ["Sn", "Hpmag"]
 _CROSS_AUX_COLS = ["number_of_neighbours", "angular_distance"]
+_CROSS_MAPPING_SOURCE_COL = "mapping_source"
 
 
 @dataclass
@@ -195,13 +196,18 @@ def run_merge(
     )
     gaia_to_hip, hip_to_gaia = _build_crossmatch_maps(cross_df)
 
-    # V2: crossmatch auxiliary data (number_of_neighbours, angular_distance).
+    # V2: crossmatch auxiliary data (mapping source, neighbours, angular distance).
     cross_aux_by_gaia: dict[int, dict[str, Any]] = {}
     for col in _CROSS_AUX_COLS:
         if col not in cross_df.columns:
             cross_df[col] = np.nan
-    for rec in cross_df[["gaia_source_id", *_CROSS_AUX_COLS]].itertuples(index=False):
+    if _CROSS_MAPPING_SOURCE_COL not in cross_df.columns:
+        cross_df[_CROSS_MAPPING_SOURCE_COL] = pd.NA
+    for rec in cross_df[
+        ["gaia_source_id", _CROSS_MAPPING_SOURCE_COL, *_CROSS_AUX_COLS]
+    ].itertuples(index=False):
         cross_aux_by_gaia[int(rec.gaia_source_id)] = {
+            "mapping_source": rec.mapping_source,
             "number_of_neighbours": policy._safe_int(rec.number_of_neighbours),
             "angular_distance": policy._safe_float(rec.angular_distance),
         }
@@ -336,6 +342,7 @@ def run_merge(
                     hip_id=hip_id,
                 )
                 if override is not None:
+                    cross_aux = cross_aux_by_gaia.get(gaia_id, {})
                     override_id = str(override["override_id"])
                     if override_id in processed_override_ids:
                         # Pair was already resolved by the counterpart route.
@@ -373,6 +380,7 @@ def run_merge(
                             hip_source_id=str(hip_id) if hip_id is not None else pd.NA,
                             winner_catalog=winner_catalog or pd.NA,
                             winner_source_id=winner_source_id or pd.NA,
+                            mapping_source=cross_aux.get("mapping_source", pd.NA),
                             gaia_score=policy._safe_score(
                                 gaia_rec.get("astrometry_quality")
                             ),
@@ -437,6 +445,7 @@ def run_merge(
                         winner_source_id=str(
                             gaia_id if winner_catalog == "gaia" else int(hip_id)
                         ),
+                        mapping_source=cross_aux.get("mapping_source", pd.NA),
                         gaia_score=policy._safe_score(
                             gaia_rec.get("astrometry_quality")
                         ),
@@ -498,6 +507,7 @@ def run_merge(
             hip_id=hip_id,
         )
         if override is not None:
+            cross_aux = cross_aux_by_gaia.get(gaia_id, {}) if gaia_id is not None else {}
             override_id = str(override["override_id"])
             if override_id in processed_override_ids:
                 resolved_hip_ids.add(hip_id)
@@ -523,6 +533,7 @@ def run_merge(
                     winner_source_id=str(override["source_id"])
                     if action == "replace"
                     else pd.NA,
+                    mapping_source=cross_aux.get("mapping_source", pd.NA),
                     hip_score=policy._safe_score(hip_rec.get("astrometry_quality")),
                     override_id=override_id,
                     override_action=action,
