@@ -10,18 +10,19 @@ the current command contract. Current supported commands remain documented in
 Use this section as the live work tracker. The detailed spec below explains the
 rules and context for each slice.
 
-- [ ] **Stage 0: Command and config shape.** Decide the public CLI surface and
-  project TOML section names before writing downloader internals. The expected
-  shape is a `gaia download plan` command first, followed by a run/executor
-  command, with all paths still rooted in the existing project file.
+- [ ] **Stage 0: Command and config contract.** Add the public CLI surface
+  `gaia download plan` and `gaia download run`, backed by a new
+  `[gaia_download]` project TOML section. Keep all paths rooted in the existing
+  project file.
 - [ ] **Stage 1: Query spec and field sets.** Build a small internal model for
   Gaia query inputs: core pipeline columns, optional carry-through field sets,
   magnitude limits, source filters, table aliases, and stable output names. This
-  stage should generate both count ADQL and download ADQL from the same spec.
+  stage generates both count ADQL and download ADQL from the same spec. Field
+  sets are checked-in TOML files selected by `[gaia_download].carry_field_sets`.
 - [ ] **Stage 2: Universal HEALPix count planning.** Implement the level-3
   HEALPix count query as the first step for every download, including small
-  runs. Persist the count table and report exact row totals so the tool can
-  validate the query and decide whether anonymous execution is allowed.
+  runs. Persist the count table in SQLite and report exact row totals so the
+  tool can validate the query and choose anonymous or authenticated execution.
 - [ ] **Stage 3: Batch planner.** Convert the count table into a download plan.
   Small runs normally collapse to one batch when they fit the anonymous row cap.
   Full runs use deterministic near-limit HEALPix packing, including explicit
@@ -29,7 +30,7 @@ rules and context for each slice.
 - [ ] **Stage 4: Archive client and durable state.** Add a testable Gaia Archive
   client boundary around `astroquery`, with lazy imports, fakeable job objects,
   job-id tracking, query hashes, output paths, phases, errors, retry counts, and
-  local progress state.
+  local SQLite progress state.
 - [ ] **Stage 5: Anonymous executor.** Run one-batch anonymous downloads from a
   saved plan: submit async, record the job id immediately, poll/reload by job id,
   stream the completed VOTable to `[gaia] input_dir`, and verify the local file.
@@ -40,9 +41,11 @@ rules and context for each slice.
 - [ ] **Stage 7: Gaia staging carry-through.** Teach Gaia staging to preserve
   configured query-backed and stage-backed carry-through fields while keeping
   `OUTPUT_COLS` unchanged for the dense pipeline contract.
-- [ ] **Stage 8: Merge-aligned Gaia enrichment sidecar.** Preserve Gaia
-  enrichment under the canonical merged identity even when Hipparcos or
-  overrides win the dense row. Keep the dense merged HEALPix shards compact.
+- [ ] **Stage 8: Merge-aligned Gaia enrichment sidecar.** Make `merge build`
+  emit the Gaia enrichment sidecar. Preserve Gaia enrichment under the canonical
+  merged identity even when Hipparcos or overrides win the dense row. Keep the
+  dense merged HEALPix shards compact and write sidecars by type, then HEALPix
+  shard.
 - [ ] **Stage 9: Derived sidecar inputs.** Build post-merge, unquantized,
   unit-documented sidecar input tables such as motion or mass. Leave final
   byte-level payload encoding and quantization to the octree repository.
@@ -68,6 +71,55 @@ rules and context for each slice.
   status output: use `tqdm` where loop progress is measurable, and ordinary
   status logging for archive jobs, polling, downloads, verification, deletion,
   and other work that does not map cleanly to a local progress loop.
+
+## Settled Interfaces
+
+- CLI commands:
+
+```bash
+uv run fis-pipeline gaia download plan --project project.toml
+uv run fis-pipeline gaia download run --project project.toml
+```
+
+- Project TOML section: `[gaia_download]`.
+- V1 project TOML keys:
+
+```toml
+[gaia_download]
+mode = "small"                 # small | full
+access = "auto"                # auto | anonymous | authenticated
+mag_limit = 9.0                # required for small, omitted for full
+state_db = "data/processed/gaia-download.sqlite"
+row_cap = 55000000
+max_active_jobs = 4
+carry_field_sets = ["motion", "mass"]
+```
+
+- `[gaia_download].mag_limit` controls the Gaia Archive source query. Existing
+  `[gaia].mag_limit` remains a local build-time guard and should match the
+  download limit or be unset when using automated downloads.
+- Durable planner and job state: SQLite, with optional human-readable exports
+  later if useful.
+- Small profile source query: all-sky magnitude-limited Gaia, default
+  `phot_g_mean_mag <= 9`.
+- Small profile planning: always run the HEALPix count query first. If the total
+  fits the anonymous row cap, write a one-batch plan. If it does not fit, refuse
+  anonymous execution and suggest lowering the magnitude limit, using
+  authenticated mode, or using a partitioned plan.
+- Carry-through fields: checked-in TOML field-set files selected by
+  `[gaia_download].carry_field_sets`. The files live under `field_sets/gaia/`
+  and are packaged with the wheel. Custom local field files are not part of v1.
+- `gaiadr3.astrophysical_parameters_supp AS aps`: not joined by default. Join it
+  only when a selected checked-in field set explicitly requires `aps` fields.
+- Merge-aligned Gaia enrichment sidecar: emitted by `merge build`, because merge
+  owns the canonical winning identity.
+- Sidecar file layout: partition by sidecar type first, then HEALPix shard, for
+  example `data/processed/sidecars/gaia_enrichment/<healpix>/...`.
+- Sidecar root path: `[merge].sidecar_output_dir`, defaulting in the checked-in
+  profiles to `data/processed/sidecars`.
+- Derived sidecar inputs: unquantized, unit-documented tables produced by the
+  pipeline after merge. Final byte-level encoding and quantization remain in the
+  octree repository.
 
 ## Goals
 
@@ -300,7 +352,7 @@ The Gaia query has two different responsibilities:
   without changing the core calculations.
 
 Core fields are code-owned because the pipeline depends on their semantics.
-Carry-through fields should be config-owned where practical.
+Carry-through fields are selected from checked-in field-set TOML files.
 
 Carry-through is broader than "new Gaia columns". A downstream sidecar builder
 may need:
@@ -318,57 +370,54 @@ The dense merged output should stay compact, but the raw/cleaning information
 needed for later derived sidecars must survive in a merge-aligned sidecar keyed
 by final pipeline identity.
 
-A future implementation should support a checked-in field-set definition rather
-than requiring code edits for every new carry-through field. One possible shape:
+Carry-through field sets live in `field_sets/gaia/` and use this TOML shape:
 
 ```toml
-[[gaia.carry_fields]]
+[[fields]]
 name = "mass_flame"
 expression = "ap.mass_flame"
 dtype = "float64"
 sidecar = "mass"
 
-[[gaia.carry_fields]]
+[[fields]]
 name = "pmra_masyr"
 source = "input"
 column = "pmra"
 dtype = "float64"
 sidecar = "motion"
 
-[[gaia.carry_fields]]
+[[fields]]
 name = "distance_use_pc"
 source = "stage"
 column = "distance_use_pc"
 dtype = "float64"
 sidecar = "motion"
 
-[[gaia.carry_fields]]
+[[fields]]
 name = "flags_flame"
 expression = "ap.flags_flame"
 dtype = "string"
 sidecar = "mass"
 ```
 
-The project profile could then select field groups:
+The project selects checked-in field groups from `[gaia_download]`:
 
 ```toml
-[gaia-download]
+[gaia_download]
 carry_field_sets = ["motion", "mass"]
 ```
 
-or point at a local field-set file:
+Custom local field files are out of scope for v1. They can be added later if a
+real need appears, but v1 should keep the teaching path small and predictable.
 
-```toml
-[gaia-download]
-carry_fields_file = "gaia-carry-fields.toml"
-```
-
-The exact TOML shape is open, but the contract should be:
+The field-set contract is:
 
 - Core query fields are always present and cannot be disabled by carry-field
   config.
 - Carry fields may reference only known query aliases such as `g`, `d`, `ap`,
   and optional `aps`.
+- The query builder joins `aps` only when a selected field set includes an
+  expression that references the `aps` alias.
 - Carry fields may also reference known staging columns produced by Gaia
   cleaning.
 - Carry fields are selected with stable output names.
@@ -390,8 +439,8 @@ sidecar data without touching astrometry, photometry, or merge-policy code.
 
 ## Download Flow
 
-The future Gaia download implementation should support at least two download
-modes aligned with the checked-in project profiles:
+The Gaia download implementation supports two download modes aligned with the
+checked-in project profiles:
 
 - `small`: beginner-friendly, real-data download with a conservative magnitude
   limit and output under `[gaia] input_dir`.
@@ -406,9 +455,8 @@ input for either a one-batch or many-batch plan.
 For the small path, the scripted flow should:
 
 1. Build the same sidecar-aware Gaia query shape as the full path.
-2. Add a conservative `phot_g_mean_mag` limit, probably matching the website's
-   `G <= 9` bright-star story unless the `small` profile deliberately chooses a
-   stricter default.
+2. Add the small-profile magnitude limit:
+   `phot_g_mean_mag <= 9`.
 3. Run the HEALPix row-count query for that filtered source query.
 4. If the exact total fits the anonymous row cap, produce a one-batch plan and
    run it anonymously unless credentials are explicitly requested.
@@ -427,9 +475,9 @@ uv run fis-pipeline gaia build --project project-small.toml
 
 For full runs, the flow should be:
 
-1. Build or fetch an all-sky level-3 count table using the same filter as the
+1. Run or reuse an all-sky level-3 count table using the same filter as the
    source query.
-2. Normalize counts into a stable local CSV.
+2. Persist counts in the download SQLite state database.
 3. Plan batches under a configurable row cap.
 4. Submit async Gaia Archive jobs for each batch.
 5. Log job ids with output filenames and query metadata.
@@ -437,9 +485,8 @@ For full runs, the flow should be:
 7. Stream completed result bytes to VOTable files under `[gaia] input_dir`.
 8. Support redownload or resume from the job log.
 
-The existing manual row-cap planning from the docs is a useful starting point,
-but implementation should be deterministic and testable as ordinary Python
-helpers.
+The existing manual row-cap planning from the docs is historical reference. The
+implementation is deterministic and testable as ordinary Python helpers.
 
 Implementation-wise, `small` and `full` should share one pipeline:
 
@@ -536,9 +583,10 @@ memory, but do not transplant the old script code.
 
 ### Download Progress State
 
-Downloads need durable local state. A CSV is acceptable for the first pass, but
-SQLite would make recovery and concurrent status updates safer. The state must
-not be catalogue data and should not be committed.
+Downloads use a durable local SQLite state database. SQLite keeps recovery,
+polling, retries, and `delete_pending` updates safe without making the planner
+or scheduler depend on in-memory state. The database is local run state, not
+catalogue data, and should not be committed.
 
 This state is per planned output batch. It complements, rather than replaces,
 the HEALPix plan table described below, which is per level-3 tile.
@@ -683,7 +731,7 @@ GROUP BY 1
 ORDER BY n DESC
 ```
 
-The resulting local plan table should keep at least:
+The resulting local SQLite count table keeps at least:
 
 ```text
 hp3
@@ -696,7 +744,7 @@ downloaded
 as downloaded, so interrupted full-sky downloads can continue without manual
 bookkeeping.
 
-The count query should use the same row-producing filter as the download query.
+The count query uses the same row-producing filter as the download query.
 Optional enrichment joins such as `ap` and `aps` do not belong in the count query
 unless a specialist extract intentionally uses them as filters.
 
@@ -704,7 +752,7 @@ The sum of the count table is the authoritative row estimate for planning. Use
 it to decide whether anonymous execution is allowed, whether a small run can be
 downloaded as one batch, and how to pack full runs.
 
-For packing batches, port the intent of the old `three-dee` recipe: repeatedly
+For packing batches, implement the intent of the old `three-dee` recipe: repeatedly
 choose the subset of remaining tile counts whose total is the largest value not
 exceeding the target row cap. The old recipe used a dynamic-programming
 subset-sum helper named `best_subset_under_limit`, wrapped by
@@ -725,8 +773,8 @@ Required planner behavior:
 - Write the plan to disk so it can be inspected, kept with local run state, and
   reused by resume/redownload commands.
 
-The default cap from the prior notes is `55_000_000` rows. It should be
-configurable for testing, archive-limit changes, and local storage constraints.
+The default batch cap is `55_000_000` rows. It is configurable for testing,
+archive-limit changes, and local storage constraints.
 
 ## Gaia Staging Output
 
@@ -736,7 +784,7 @@ Gaia staging should distinguish:
 - merge diagnostic columns, currently `ruwe` and `phot_g_mean_mag`
 - Gaia enrichment columns for future sidecars
 
-A likely implementation shape:
+Implementation shape:
 
 ```python
 GAIA_DECISION_AUX_COLS = [
@@ -755,9 +803,9 @@ GAIA_ENRICHMENT_COLS = [
 GAIA_OUTPUT_COLS = OUTPUT_COLS + GAIA_DECISION_AUX_COLS + GAIA_ENRICHMENT_COLS
 ```
 
-The exact naming should be chosen once, documented, and tested. Prefixing raw
-enrichment columns with `gaia_` is useful because merged rows may use a
+Raw enrichment columns use a `gaia_` prefix because merged rows may use a
 Hipparcos or manual canonical identity while still carrying Gaia sidecar data.
+Names are documented in the field-set files and covered by tests.
 
 ## Merge Contract
 
@@ -778,9 +826,9 @@ Rules:
   an explicit enrichment block.
 - Unmatched Hipparcos row: no Gaia enrichment.
 
-Do not widen the dense merged HEALPix output with all enrichment fields. Instead
-produce a merge-aligned Gaia enrichment sidecar keyed by the canonical merged
-identity:
+Do not widen the dense merged HEALPix output with all enrichment fields.
+`merge build` writes a merge-aligned Gaia enrichment sidecar keyed by the
+canonical merged identity:
 
 ```text
 source
@@ -789,10 +837,18 @@ gaia_source_id
 ...Gaia enrichment fields...
 ```
 
-The sidecar should be sharded using the winning dense row's `ra_deg` and
-`dec_deg`, not necessarily Gaia's original coordinates. That keeps sidecar files
-spatially aligned with octree input shards even when Hipparcos or an override
-provides the dense position.
+The sidecar is sharded using the winning dense row's `ra_deg` and `dec_deg`, not
+necessarily Gaia's original coordinates. That keeps sidecar files spatially
+aligned with octree input shards even when Hipparcos or an override provides the
+dense position.
+
+Sidecars are written by type first, then HEALPix shard:
+
+```text
+data/processed/sidecars/gaia_enrichment/<healpix>/...
+data/processed/sidecars/motion/<healpix>/...
+data/processed/sidecars/mass/<healpix>/...
+```
 
 ## Derived Sidecar Inputs For Octree
 
@@ -941,17 +997,13 @@ Merge:
 - Unmatched Hipparcos emits no enrichment.
 - Dense merged output schema remains unchanged.
 
-## Open Questions
+## Resolved Decisions
 
-- Should Gaia download configuration live in `[gaia]` or a new
-  `[gaia-download]` section?
-- Should `astrophysical_parameters_supp` be enabled by default or behind an
-  explicit option?
-- What is the exact small-profile query: magnitude-limited all-sky, local
-  distance-limited sample, or a fixed small set of HEALPix level-3 tiles?
-- Should the merge-aligned enrichment sidecar be emitted by `merge build`, or by
-  a separate `sidecars build` stage that consumes merge decisions plus staged
-  Gaia data?
-- What should the canonical sidecar file layout be for downstream octree
-  builders: one sidecar per merged HEALPix shard, or separate partition roots by
-  sidecar type?
+- Gaia download configuration lives in `[gaia_download]`.
+- The small profile query is all-sky with `phot_g_mean_mag <= 9`.
+- Every download starts with a level-3 HEALPix count query.
+- `astrophysical_parameters_supp` is joined only when a selected field set needs
+  the `aps` alias.
+- Durable planning and job state is SQLite.
+- The merge-aligned Gaia enrichment sidecar is emitted by `merge build`.
+- Sidecar outputs are partitioned by sidecar type first, then HEALPix shard.
