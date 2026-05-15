@@ -395,7 +395,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=23.0.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "tqdm", specifier = ">=4.67.3" },
-    { name = "votpipe", specifier = ">=0.1.0" },
+    { name = "votpipe", specifier = ">=0.2.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -975,11 +975,11 @@ wheels = [
 
 [[package]]
 name = "votpipe"
-version = "0.1.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c6/f4/18e049aa2bb24a4d49344ef0cba8050fe6af1dbae622fdd9e0d4ff98fa37/votpipe-0.1.0.tar.gz", hash = "sha256:f30ac8a7a52d2dade4b75f4adfc65d7442a840837644f7108aed54bcc16eff56", size = 88389, upload-time = "2026-03-07T12:45:38.705Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/dd/4172d29d439f0c3655e332c9dcb849aa4d37cb537215155a64b23e9265d9/votpipe-0.2.1.tar.gz", hash = "sha256:a03315f0b5b475a06350dd50e4750f62a9a33d4ce6820ad6e08273e64d4cb3a4", size = 90346, upload-time = "2026-05-15T08:17:08.116Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/de/f17a8afa66fbe52f9f49d9603236476d5a9c063f411c91ef1a39d81b4c04/votpipe-0.1.0-py3-none-any.whl", hash = "sha256:073335310c98688cac3220a849153d8c833dea3656a0b098ef9b6fe1524c7ea0", size = 20237, upload-time = "2026-03-07T12:45:37.017Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/ed/95bb7b49481222f2393d063b31e8f4640a43ce4617a19f1b666f465cb018/votpipe-0.2.1-py3-none-any.whl", hash = "sha256:8dcf56bff50a75772be189ff86a0a0344ddda35a01ddecda130412c1b80bc85d", size = 21536, upload-time = "2026-05-15T08:17:06.895Z" },
 ]
 
 [[package]]

@@ -1,0 +1,81 @@
+[[fields]]
+name = "mass_flame_spec_solar"
+expression = "aps.mass_flame_spec"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar mass"
+
+[[fields]]
+name = "mass_flame_spec_lower_solar"
+expression = "aps.mass_flame_spec_lower"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar mass"
+
+[[fields]]
+name = "mass_flame_spec_upper_solar"
+expression = "aps.mass_flame_spec_upper"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar mass"
+
+[[fields]]
+name = "lum_flame_spec_solar"
+expression = "aps.lum_flame_spec"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar luminosity"
+
+[[fields]]
+name = "lum_flame_spec_lower_solar"
+expression = "aps.lum_flame_spec_lower"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar luminosity"
+
+[[fields]]
+name = "lum_flame_spec_upper_solar"
+expression = "aps.lum_flame_spec_upper"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar luminosity"
+
+[[fields]]
+name = "radius_flame_spec_solar"
+expression = "aps.radius_flame_spec"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar radius"
+
+[[fields]]
+name = "radius_flame_spec_lower_solar"
+expression = "aps.radius_flame_spec_lower"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar radius"
+
+[[fields]]
+name = "radius_flame_spec_upper_solar"
+expression = "aps.radius_flame_spec_upper"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar radius"
+
+[[fields]]
+name = "flags_flame_spec"
+expression = "aps.flags_flame_spec"
+dtype = "string"
+sidecar = "mass"
+
+[[fields]]
+name = "evolstage_flame_spec"
+expression = "aps.evolstage_flame_spec"
+dtype = "int64"
+sidecar = "mass"
+
+[[fields]]
+name = "bc_flame_spec"
+expression = "aps.bc_flame_spec"
+dtype = "float64"
+sidecar = "mass"
+unit = "mag"

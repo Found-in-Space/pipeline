@@ -1,0 +1,159 @@
+[[fields]]
+name = "ref_epoch"
+expression = "g.ref_epoch"
+dtype = "float64"
+sidecar = "motion"
+unit = "Julian year"
+
+[[fields]]
+name = "pm_masyr"
+expression = "g.pm"
+dtype = "float64"
+sidecar = "motion"
+unit = "mas yr-1"
+
+[[fields]]
+name = "pmra_masyr"
+source = "input"
+column = "pmra"
+dtype = "float64"
+sidecar = "motion"
+unit = "mas yr-1"
+
+[[fields]]
+name = "pmdec_masyr"
+source = "input"
+column = "pmdec"
+dtype = "float64"
+sidecar = "motion"
+unit = "mas yr-1"
+
+[[fields]]
+name = "pmra_error_masyr"
+expression = "g.pmra_error"
+dtype = "float64"
+sidecar = "motion"
+unit = "mas yr-1"
+
+[[fields]]
+name = "pmdec_error_masyr"
+expression = "g.pmdec_error"
+dtype = "float64"
+sidecar = "motion"
+unit = "mas yr-1"
+
+[[fields]]
+name = "pmra_pmdec_corr"
+expression = "g.pmra_pmdec_corr"
+dtype = "float64"
+sidecar = "motion"
+
+[[fields]]
+name = "parallax_mas"
+source = "input"
+column = "parallax"
+dtype = "float64"
+sidecar = "motion"
+unit = "mas"
+
+[[fields]]
+name = "parallax_error_mas"
+source = "input"
+column = "parallax_error"
+dtype = "float64"
+sidecar = "motion"
+unit = "mas"
+
+[[fields]]
+name = "radial_velocity_kms"
+expression = "g.radial_velocity"
+dtype = "float64"
+sidecar = "motion"
+unit = "km s-1"
+
+[[fields]]
+name = "radial_velocity_error_kms"
+expression = "g.radial_velocity_error"
+dtype = "float64"
+sidecar = "motion"
+unit = "km s-1"
+
+[[fields]]
+name = "rv_method_used"
+expression = "g.rv_method_used"
+dtype = "int64"
+sidecar = "motion"
+
+[[fields]]
+name = "rv_nb_transits"
+expression = "g.rv_nb_transits"
+dtype = "int64"
+sidecar = "motion"
+
+[[fields]]
+name = "rv_visibility_periods_used"
+expression = "g.rv_visibility_periods_used"
+dtype = "int64"
+sidecar = "motion"
+
+[[fields]]
+name = "rv_expected_sig_to_noise"
+expression = "g.rv_expected_sig_to_noise"
+dtype = "float64"
+sidecar = "motion"
+
+[[fields]]
+name = "rv_renormalised_gof"
+expression = "g.rv_renormalised_gof"
+dtype = "float64"
+sidecar = "motion"
+
+[[fields]]
+name = "rv_chisq_pvalue"
+expression = "g.rv_chisq_pvalue"
+dtype = "float64"
+sidecar = "motion"
+
+[[fields]]
+name = "rv_amplitude_robust"
+expression = "g.rv_amplitude_robust"
+dtype = "float64"
+sidecar = "motion"
+
+[[fields]]
+name = "distance_use_pc"
+source = "stage"
+column = "distance_use_pc"
+dtype = "float64"
+sidecar = "motion"
+unit = "pc"
+
+[[fields]]
+name = "r_lo_pc"
+source = "stage"
+column = "r_lo_pc"
+dtype = "float64"
+sidecar = "motion"
+unit = "pc"
+
+[[fields]]
+name = "r_hi_pc"
+source = "stage"
+column = "r_hi_pc"
+dtype = "float64"
+sidecar = "motion"
+unit = "pc"
+
+[[fields]]
+name = "bp_rp"
+source = "stage"
+column = "bp_rp"
+dtype = "float64"
+sidecar = "motion"
+
+[[fields]]
+name = "photometry_quality"
+source = "stage"
+column = "photometry_quality"
+dtype = "float64"
+sidecar = "motion"

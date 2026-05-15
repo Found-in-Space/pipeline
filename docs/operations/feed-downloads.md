@@ -1,288 +1,114 @@
-# Feed Downloads (Gaia + Hipparcos)
+# Feed Downloads
 
-This is the operational recipe for the download side of the star feed pipeline.
-Use the repo commands where they exist; the Gaia all-sky batching notes remain a
-manual recipe until Gaia download automation is added.
+This is the operational checklist for getting source catalogs onto disk. The
+pipeline keeps catalog data out of git; profiles define paths, and commands
+download or build the local files as needed.
 
-It covers:
+For a first run, use the `small` profile and keep the project on a data volume
+with enough space:
 
-- Hipparcos: one catalog download.
-- Gaia: all-sky HEALPix-L3 counting, batch planning under a row cap, and per-batch async downloads.
-- Identifiers: HIP/HD, Bayer/Flamsteed, and proper-name source catalogs used to build a wide sidecar.
-
-## Prerequisites
-
-- Python 3.13+.
-- Project dependencies installed with `uv sync`.
-- Gaia Archive account credentials for async TAP jobs.
-
-## Output files
-
-Recommended outputs:
-
-- `hipparcos2.ecsv` (Hipparcos raw catalog).
-- `hip_hd.ecsv` (HIP→HD from `I/239/hip_main`).
-- `iv27a_catalog.ecsv` (`HIP`, `HD`, `Bayer`, `Fl`, `Cst` from `IV/27A/catalog`).
-- `iv27a_proper_names.ecsv` (`HD`→proper names from `IV/27A/table3`).
-- `identifiers_map.parquet` (wide sidecar keyed by `(source, source_id)`).
-- `gaia-l3-all-sky-count.csv` (L3 tile counts + manual status).
-- `gaia_batch_plan.csv` (optional: batch assignment for each `hp3`).
-- `gaia_batch_<label>.vot.gz` (one file per Gaia download batch).
-- `gaia_hipparcos2_best_neighbour.ecsv` (Gaia archive cross-match: Gaia `source_id` ↔ Hipparcos HIP).
-
-## Gaia↔Hipparcos cross-match (`hipparcos2_best_neighbour`)
-
-The main Gaia star feed query (above) does **not** include Hipparcos identifiers. The merger instead uses a small sidecar Parquet (`gaia_hip_map.parquet`) built from the Gaia archive table `gaiadr3.hipparcos2_best_neighbour` (~100k rows).
-
-**In this repo:** run `fis-pipeline gaia-to-hip build`. Defaults: ECSV under `data/catalogs/`, Parquet at `data/processed/gaia_hip_map.parquet`.
-
-**Standalone TAP recipe** (equivalent to `gaia-to-hip download`):
-
-```python
-from astroquery.gaia import Gaia
-
-QUERY = """
-SELECT
-  source_id,
-  original_ext_source_id,
-  angular_distance,
-  number_of_neighbours
-FROM gaiadr3.hipparcos2_best_neighbour
-"""
-
-job = Gaia.launch_job(QUERY)
-result = job.get_results()
-result.write("gaia_hipparcos2_best_neighbour.ecsv", format="ascii.ecsv", overwrite=True)
+```bash
+uv run fis-pipeline project init --profile small project.toml
 ```
 
-`original_ext_source_id` is the Hipparcos-2 source id (the HIP number). Optional columns are kept in the ECSV for provenance; the pipeline sidecar uses only `source_id` and `original_ext_source_id`.
+## 1. Hipparcos
 
-## Hipparcos workflow
+Build Hipparcos first:
 
-**In this repo:** run `fis-pipeline hip build`.
-
-## 1) Download Hipparcos
-
-```python
-from astroquery.vizier import Vizier
-
-v = Vizier(columns=["*"], row_limit=-1)
-tables = v.get_catalogs("I/311/hip2")  # Hipparcos New Reduction
-hip_table = tables[0]
-hip_table.write("hipparcos2.ecsv", format="ascii.ecsv", overwrite=True)
-print(f"saved {len(hip_table):,} rows")
+```bash
+uv run fis-pipeline hip build --project project.toml
 ```
 
-## 2) Process Hipparcos downstream
+If `[hip].download_ecsv` is missing, the command downloads the Hipparcos New
+Reduction catalog and then writes `[hip].output_parquet`.
 
-Processing is pipeline-specific, but typically:
+## 2. Gaia To Hipparcos Crossmatch
 
-1. Load Hipparcos.
-2. Run astrometry quality selection.
-3. Derive photometry + coordinates.
+Build the Gaia DR3 to Hipparcos sidecar:
 
-
-## Gaia workflow
-
-Gaia jobs are partitioned by HEALPix level 3 (`hp3`) derived from `source_id`.
-
-## 1) Build all-sky L3 count table
-
-Use the same filter as your star download query, but aggregate to counts:
-
-```sql
-SELECT
-  (g.source_id / 9007199254740992) AS hp3,
-  COUNT(*) AS n
-FROM gaiadr3.gaia_source AS g
-JOIN external.gaiaedr3_distance AS d
-  ON d.source_id = g.source_id
-WHERE
-  g.astrometric_params_solved IN (31, 95)
-  AND (
-    d.r_med_photogeo IS NOT NULL
-    OR d.r_med_geo IS NOT NULL
-  )
-GROUP BY 1
-ORDER BY n DESC;
+```bash
+uv run fis-pipeline gaia-to-hip build --project project.toml
 ```
 
-Export the result to CSV and add a manual status column:
+If `[gaia-to-hip].download_ecsv` is missing, the command downloads
+`gaiadr3.hipparcos2_best_neighbour` and writes the processed Parquet sidecar.
+The merge uses this sidecar to compare matched Gaia and Hipparcos rows.
 
-```csv
-hp3,n,downloaded
-451,"1,234,567",
-...
+## 3. Identifiers
+
+Build the sparse name/designation sidecar:
+
+```bash
+uv run fis-pipeline identifiers build --project project.toml
 ```
 
-Notes:
+If the configured ECSV files are missing, the command downloads the small
+Vizier sources used for HIP/HD, Bayer/Flamsteed, and proper-name mappings.
 
-- `9007199254740992 = 2^53`, used to extract the L3 partition from Gaia `source_id`.
-- `downloaded` is a manual marker (`b1`, `b2`, ...), blank for pending tiles.
+## 4. Overrides
 
-## 2) Normalize counts from CSV
+Build manual override rows:
 
-```python
-import numpy as np
-import pandas as pd
-
-df = pd.read_csv("gaia-l3-all-sky-count.csv")
-df.columns = [c.strip() for c in df.columns]
-df["count"] = pd.to_numeric(
-    df["n"].astype(str).str.replace(r"[,\s]+", "", regex=True),
-    errors="coerce",
-)
-df["to_download"] = np.where(df["downloaded"].isna(), df["count"], 0)
+```bash
+uv run fis-pipeline overrides build --project project.toml
 ```
 
-## 3) Plan batches under the row limit
+By default this uses packaged curated YAML files. Set `[overrides].data_dir` in
+the project file only when working with a separate local override directory.
 
-We use a batch limit of 55,000,000 here as a compromise between number of downloads, file size, 
-and any limits imposed by the Gaia archive. This can be tuned to fit your use-case.
+## 5. Gaia
 
-Use repeated "best subset under limit" (dynamic programming) to pack each batch close to the cap.
+Gaia is the large feed, so it has its own planning and resume state.
 
-```python
-from typing import List, Tuple
+For the scripted path:
 
-def best_subset_under_limit(values: List[int], limit: int) -> Tuple[List[int], int]:
-    # reachable[sum] = list of chosen local indices producing this sum
-    reachable = {0: []}
-    for i, v in enumerate(values):
-        nxt = dict(reachable)
-        for s, idxs in reachable.items():
-            t = s + int(v)
-            if t <= limit and t not in nxt:
-                nxt[t] = idxs + [i]
-        reachable = nxt
-    best_sum = max(reachable.keys())
-    return reachable[best_sum], best_sum
-
-
-def batch_under_limit(values: List[int], limit: int = 55_000_000) -> List[List[int]]:
-    # Keep original positions so we can map back to hp3 later.
-    remaining = list(enumerate(values))  # (original_idx, count)
-    batches: List[List[int]] = []
-
-    while remaining:
-        local_values = [v for _, v in remaining]
-        chosen_local, total = best_subset_under_limit(local_values, limit)
-
-        # Fallback: if nothing non-empty fits, take the largest single tile.
-        if not chosen_local:
-            max_i = max(range(len(local_values)), key=lambda i: local_values[i])
-            chosen_local = [max_i]
-            total = local_values[max_i]
-
-        chosen_set = set(chosen_local)
-        batch_orig_indices = [remaining[i][0] for i in chosen_local]
-        batches.append(batch_orig_indices)
-        remaining = [x for i, x in enumerate(remaining) if i not in chosen_set]
-
-        print(f"batch {len(batches)} rows={total:,} waste={limit-total:,}")
-
-    return batches
+```bash
+uv run fis-pipeline gaia download plan --project project.toml
+uv run fis-pipeline gaia download run --project project.toml
+uv run fis-pipeline gaia build --project project.toml
 ```
 
-Run planning:
+For the browser-assisted small path:
 
-```python
-pending = (
-    df[df["downloaded"].isna()][["hp3", "count"]]
-    .sort_values("count", ascending=True)
-    .reset_index(drop=True)
-)
-
-batches = batch_under_limit(pending["count"].tolist(), limit=55_000_000)
+```bash
+uv run fis-pipeline gaia download queries --project project.toml
 ```
 
-Assign labels and save a plan:
+Paste the generated `download.adql` into the Gaia Archive web UI, download the
+result as VOTable gzip, place it under `[gaia].input_dir`, and run `gaia build`.
 
-```python
-pending["batch"] = ""
-for i, member_indices in enumerate(batches, start=1):
-    pending.loc[member_indices, "batch"] = f"b{i}"
+See [gaia-download.md](gaia-download.md) for credentials, anonymous limits,
+resuming interrupted jobs, remote deletion, carry-through field sets, and
+sidecar behavior.
 
-pending.to_csv("gaia_batch_plan.csv", index=False)
+## 6. Merge
+
+Once all staged inputs exist, run:
+
+```bash
+uv run fis-pipeline merge build --project project.toml
 ```
 
-## 4) Build per-batch Gaia query
+The merge writes dense HEALPix shards, a decision table, a report, and
+merge-aligned Gaia sidecars for enrichment, motion, and mass.
 
-For one batch, collect `hp3` values and inject into `IN (...)`.
+## Useful Checks
 
-```python
-batch_label = "b1"
-levels = pending.loc[pending["batch"] == batch_label, "hp3"].astype(int).tolist()
-formatted_levels = ",".join(str(h) for h in levels)
+Show the resolved command surface:
 
-QUERY_TEMPLATE = """
-SELECT
-  g.source_id,
-  g.ra,
-  g.dec,
-  g.parallax,
-  g.parallax_error,
-  g.pmra,
-  g.pmdec,
-  g.phot_g_mean_mag,
-  g.phot_bp_mean_mag,
-  g.phot_rp_mean_mag,
-  g.ruwe,
-  d.r_med_geo,
-  d.r_lo_geo,
-  d.r_hi_geo,
-  d.r_med_photogeo,
-  d.r_lo_photogeo,
-  d.r_hi_photogeo
-FROM gaiadr3.gaia_source AS g
-JOIN external.gaiaedr3_distance AS d
-  ON d.source_id = g.source_id
-WHERE
-  g.astrometric_params_solved IN (31, 95)
-  AND (
-    d.r_med_photogeo IS NOT NULL
-    OR d.r_med_geo IS NOT NULL
-  )
-  AND g.source_id / 9007199254740992 IN ({formatted_levels})
-"""
-
-query = QUERY_TEMPLATE.format(formatted_levels=formatted_levels)
+```bash
+uv run fis-pipeline --help
+uv run fis-pipeline gaia download --help
 ```
 
-## 5) Submit async Gaia job and save output
+Inspect generated Gaia ADQL:
 
-```python
-from astroquery.gaia import Gaia
-
-# Gaia.login(user="your_username", password="your_password")
-job = Gaia.launch_job_async(query, output_format="votable_gzip", background=True)
-print("job id:", job.jobid)
+```bash
+uv run fis-pipeline gaia download queries --project project.toml
 ```
 
-When complete:
+Rerun a resumable Gaia download after interruption:
 
-```python
-result = job.get_results()
-result.write(f"gaia_batch_{batch_label}.vot.gz", format="votable", overwrite=True)
+```bash
+uv run fis-pipeline gaia download run --project project.toml
 ```
-
-Repeat for each batch label.
-
-## 6) Mark completed batches
-
-After a batch file is downloaded and validated, update `downloaded` for those `hp3` rows (for example, to `b1`) so re-planning skips them.
-
-## 7) Optional verification: count query reproducibility
-
-To verify your count query still matches your canonical CSV:
-
-1. Re-run the all-sky count query.
-2. Normalize both sides (`n` as integer, no commas).
-3. Join on `hp3`.
-4. Assert zero differences.
-
-If differences occur, check for:
-
-- changed Gaia release/table names,
-- changed filter predicates,
-- integer division/casting behavior in your TAP service.

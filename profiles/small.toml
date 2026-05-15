@@ -3,7 +3,16 @@ format_version = 1
 [gaia]
 input_dir = "data/catalogs/gaia-small"
 output_dir = "data/processed/gaia-small"
-mag_limit = 8.0
+mag_limit = 9.0
+
+[gaia_download]
+mode = "small"
+access = "auto"
+mag_limit = 9.0
+state_db = "data/processed/gaia-download-small.sqlite"
+row_cap = 55000000
+max_active_jobs = 4
+carry_field_sets = ["motion", "mass"]
 
 [gaia-to-hip]
 download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"

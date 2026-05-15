@@ -66,3 +66,33 @@ def _write_shards(
         pq.write_table(table, str(out_path), compression="zstd")
         rows_written += len(part)
     return rows_written
+
+
+def _write_sidecar_shards(
+    df: pd.DataFrame,
+    *,
+    hp: Any,
+    sidecar_root: Path,
+    sidecar_name: str,
+    phase_tag: str,
+    output_cols: list[str],
+    seq_by_key: dict[tuple[str, int], int],
+) -> int:
+    if df.empty:
+        return 0
+    pixels = _healpix_pixels(hp, df["_shard_ra_deg"], df["_shard_dec_deg"])
+    rows_written = 0
+    shards_root = sidecar_root / sidecar_name
+    for pixel in sorted(np.unique(pixels)):
+        pixel_i = int(pixel)
+        pixel_dir = shards_root / str(pixel_i)
+        pixel_dir.mkdir(parents=True, exist_ok=True)
+        key = (sidecar_name, pixel_i)
+        next_seq = seq_by_key.get(key, 0) + 1
+        seq_by_key[key] = next_seq
+        out_path = pixel_dir / f"{next_seq:06d}_{phase_tag}.parquet"
+        part = df.loc[pixels == pixel_i, output_cols]
+        table = pa.Table.from_pandas(part, preserve_index=False)
+        pq.write_table(table, str(out_path), compression="zstd")
+        rows_written += len(part)
+    return rows_written

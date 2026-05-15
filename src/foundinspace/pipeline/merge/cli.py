@@ -40,10 +40,12 @@ def build(
         crossmatch_path=project.gaia_to_hip.output_parquet,
         overrides_path=project.overrides.output_parquet,
         output_dir=output_dir,
+        sidecar_output_dir=project.merge.sidecar_output_dir,
         healpix_order=project.merge.healpix_order,
         force=force,
     )
     click.echo(f"Wrote merged shards under {(output_dir / 'healpix').resolve()}")
+    click.echo(f"Wrote sidecars under {project.merge.sidecar_output_dir.resolve()}")
     click.echo(f"Merge report: {(output_dir / 'merge_report.json').resolve()}")
     click.echo(
         "Summary: "

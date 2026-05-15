@@ -12,6 +12,7 @@ override policy, and write canonical HEALPix-partitioned output.
 - `[gaia-to-hip] output_parquet`
 - `[overrides] output_parquet`
 - `[merge] healpix_order`
+- Optional `[merge] sidecar_output_dir`
 
 ## Command
 
@@ -27,11 +28,19 @@ Under `[merge] output_dir`:
 - `merge_report.json`
 - `merge_decisions.parquet`
 
+Under `[merge] sidecar_output_dir`, or a sibling `sidecars` directory when not
+set:
+
+- `gaia_enrichment/{pixel}/*.parquet`
+- `motion/{pixel}/*.parquet`
+- `mass/{pixel}/*.parquet`
+
 ## Owning Modules
 
 - `foundinspace.pipeline.merge.pipeline`
 - `foundinspace.pipeline.merge.policy`
 - `foundinspace.pipeline.merge.shards`
+- `foundinspace.pipeline.merge.sidecars`
 
 ## Tests
 

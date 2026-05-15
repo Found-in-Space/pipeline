@@ -19,6 +19,10 @@ from votpipe import parse_votable
 from foundinspace.pipeline.common.coords import calculate_coordinates_fast
 from foundinspace.pipeline.constants import OUTPUT_COLS
 from foundinspace.pipeline.gaia.astrometry import select_astrometry_gaia
+from foundinspace.pipeline.gaia.download.fieldsets import (
+    GaiaCarryField,
+    gaia_enrichment_columns,
+)
 from foundinspace.pipeline.gaia.photometry import (
     assign_photometry_gaia,
     compute_mag_abs_gaia,
@@ -27,12 +31,63 @@ from foundinspace.pipeline.gaia.photometry import (
 
 BATCH_SIZE = 1_000_000
 
-GAIA_AUXILIARY_COLS = ["ruwe", "phot_g_mean_mag"]
-GAIA_OUTPUT_COLS = OUTPUT_COLS + GAIA_AUXILIARY_COLS
+GAIA_DECISION_AUX_COLS = ["ruwe", "phot_g_mean_mag"]
+GAIA_AUXILIARY_COLS = GAIA_DECISION_AUX_COLS
+GAIA_OUTPUT_COLS = OUTPUT_COLS + GAIA_DECISION_AUX_COLS
 
 
-def _run_gaia_pipeline_batch(df: pd.DataFrame) -> pd.DataFrame:
-    """Run the Gaia pipeline on a single batch; returns DataFrame with _OUTPUT_COLS only."""
+def _empty_carry_series(index: pd.Index, dtype: str) -> pd.Series:
+    if dtype == "string":
+        return pd.Series(pd.NA, index=index, dtype="string")
+    if dtype == "int64":
+        return pd.Series(pd.NA, index=index, dtype="Int64")
+    if dtype == "uint64":
+        return pd.Series(pd.NA, index=index, dtype="UInt64")
+    if dtype == "bool":
+        return pd.Series(pd.NA, index=index, dtype="boolean")
+    return pd.Series(np.nan, index=index, dtype="float64")
+
+
+def _coerce_carry_series(series: pd.Series, dtype: str, index: pd.Index) -> pd.Series:
+    aligned = series.reindex(index)
+    if dtype == "string":
+        return aligned.astype("string")
+    if dtype in {"int64", "uint64"}:
+        numeric = pd.to_numeric(aligned, errors="coerce")
+        out_dtype = "Int64" if dtype == "int64" else "UInt64"
+        return numeric.round().astype(out_dtype)
+    if dtype == "bool":
+        return aligned.astype("boolean")
+    return pd.to_numeric(aligned, errors="coerce").astype("float64")
+
+
+def _apply_carry_fields(
+    work: pd.DataFrame,
+    input_df: pd.DataFrame,
+    carry_fields: tuple[GaiaCarryField, ...],
+) -> pd.DataFrame:
+    if not carry_fields:
+        return work
+    for field in carry_fields:
+        source_df = work if field.source == "stage" else input_df
+        source_col = field.input_column
+        if source_col in source_df.columns:
+            work[field.output_column] = _coerce_carry_series(
+                source_df[source_col],
+                field.dtype,
+                work.index,
+            )
+        else:
+            work[field.output_column] = _empty_carry_series(work.index, field.dtype)
+    return work
+
+
+def _run_gaia_pipeline_batch(
+    df: pd.DataFrame,
+    *,
+    carry_fields: tuple[GaiaCarryField, ...] = (),
+) -> pd.DataFrame:
+    """Run the Gaia pipeline on a single batch and return dense plus aux columns."""
     df = df.copy()
     bp = df.get("phot_bp_mean_mag", pd.Series(np.nan, index=df.index)).astype(float)
     rp = df.get("phot_rp_mean_mag", pd.Series(np.nan, index=df.index)).astype(float)
@@ -47,10 +102,12 @@ def _run_gaia_pipeline_batch(df: pd.DataFrame) -> pd.DataFrame:
     # work = compute_log_g_gaia(work)
     work["source"] = "gaia"
     work["source_id"] = work["source_id"].astype("uint64")
-    for col in GAIA_AUXILIARY_COLS:
+    work = _apply_carry_fields(work, df, carry_fields)
+    for col in GAIA_DECISION_AUX_COLS:
         if col not in work.columns:
             work[col] = np.nan
-    return work[GAIA_OUTPUT_COLS]
+    output_cols = GAIA_OUTPUT_COLS + gaia_enrichment_columns(carry_fields)
+    return work[output_cols]
 
 
 def main(
@@ -59,6 +116,7 @@ def main(
     *,
     skip_if_exists: bool = True,
     mag_limit: float | None = None,
+    carry_fields: tuple[GaiaCarryField, ...] = (),
 ) -> None:
     """Stream input_path (VOTable), run pipeline per batch, write to output_path."""
     if skip_if_exists and output_path.exists():
@@ -91,7 +149,7 @@ def main(
             df = df[g_mag <= mag_limit]
             if df.empty:
                 return
-        result = _run_gaia_pipeline_batch(df)
+        result = _run_gaia_pipeline_batch(df, carry_fields=carry_fields)
         if len(result) == 0:
             return
         table = pa.Table.from_pandas(result, preserve_index=False)

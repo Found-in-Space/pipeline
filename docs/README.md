@@ -8,6 +8,8 @@ This documentation is organized by how you want to approach the project.
 - [Project file](project-file.md) explains the `project.toml` contract.
 - [Profiles](profiles.md) explains the checked-in `full` and `small` templates.
 - [Feed downloads](operations/feed-downloads.md) covers the current download workflow.
+- [Gaia download](operations/gaia-download.md) walks through scripted and
+  browser-assisted Gaia VOTable downloads.
 
 ## Understand the Data Choices
 
@@ -30,7 +32,3 @@ Each stage has a short ownership page:
 - [Merge](stages/merge.md)
 
 For command details, see [reference/cli.md](reference/cli.md).
-
-## Planning Notes
-
-- [Gaia download and sidecars](planning/gaia-download-and-sidecars.md)

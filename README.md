@@ -21,10 +21,9 @@ uv run fis-pipeline --help
 uv run fis-pipeline project init --profile small project.toml
 ```
 
-The `small` profile uses real catalog downloads where the repo already supports
-automation. Gaia VOTable download automation is planned next; until then,
-`[gaia] input_dir` is where Gaia files should be placed before running
-`fis-pipeline gaia build`.
+The `small` profile uses real catalog downloads, including a scripted Gaia
+download path. Gaia VOTables are written under `[gaia] input_dir`, then staged
+with `fis-pipeline gaia build`.
 
 For the guided path, start with [docs/start-here.md](docs/start-here.md).
 
@@ -39,7 +38,7 @@ uv run fis-pipeline --help
 Command groups:
 
 - `project` - write starter project files.
-- `gaia` - process Gaia VOTables into staged Parquet.
+- `gaia` - download Gaia VOTables and process them into staged Parquet.
 - `hip` - download and process Hipparcos.
 - `gaia-to-hip` - download and build the Gaia-to-Hipparcos crossmatch sidecar.
 - `identifiers` - download and build sparse name/designation sidecars.

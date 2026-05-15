@@ -10,6 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from foundinspace.pipeline.constants import OUTPUT_COLS
+from foundinspace.pipeline.merge.overrides import OVERRIDE_REQUIRED_COLS
 from foundinspace.pipeline.merge.pipeline import run_merge
 from foundinspace.pipeline.merge.policy import (
     _choose_matched_winner,
@@ -408,6 +409,95 @@ def test_run_merge_rejects_drop_override_with_payload(tmp_path: Path):
             healpix_order=1,
             force=True,
         )
+
+
+def test_run_merge_writes_gaia_enrichment_sidecars_for_hip_winner(tmp_path: Path):
+    gaia_dir = tmp_path / "gaia"
+    hip_path = tmp_path / "hip_stars.parquet"
+    crossmatch_path = tmp_path / "gaia_hip_map.parquet"
+    overrides_path = tmp_path / "overrides.parquet"
+    output_dir = tmp_path / "merged"
+    sidecar_dir = tmp_path / "sidecars"
+
+    gaia_row = {
+        **_with_radec_r_pc(
+            {
+                "source": "gaia",
+                "source_id": 1001,
+                "x_icrs_pc": 1.0,
+                "y_icrs_pc": 0.0,
+                "z_icrs_pc": 0.0,
+                "mag_abs": 1.0,
+                "teff": 5000.0,
+                "quality_flags": 1,
+                "astrometry_quality": 1.0,
+                "photometry_quality": 0.1,
+            }
+        ),
+        "phot_g_mean_mag": 8.0,
+        "ruwe": 1.1,
+        "gaia_ref_epoch": 2016.0,
+        "gaia_pmra_masyr": 12.5,
+        "gaia_mass_flame_solar": 0.8,
+    }
+    _write_parquet(pd.DataFrame([gaia_row]), gaia_dir / "b1.parquet")
+
+    hip_df = pd.DataFrame(
+        [
+            _with_radec_r_pc(
+                {
+                    "source": "hip",
+                    "source_id": 2001,
+                    "x_icrs_pc": 2.0,
+                    "y_icrs_pc": 0.0,
+                    "z_icrs_pc": 0.0,
+                    "mag_abs": 2.0,
+                    "teff": 6000.0,
+                    "quality_flags": 2,
+                    "astrometry_quality": 0.1,
+                    "photometry_quality": 0.2,
+                }
+            )
+        ]
+    )
+    _write_parquet(hip_df[OUTPUT_COLS], hip_path)
+    _write_parquet(
+        pd.DataFrame([{"gaia_source_id": 1001, "hip_source_id": 2001}]),
+        crossmatch_path,
+    )
+    _write_parquet(pd.DataFrame(columns=OVERRIDE_REQUIRED_COLS), overrides_path)
+
+    run_merge(
+        gaia_dir=gaia_dir,
+        hip_path=hip_path,
+        crossmatch_path=crossmatch_path,
+        overrides_path=overrides_path,
+        output_dir=output_dir,
+        sidecar_output_dir=sidecar_dir,
+        healpix_order=1,
+        force=True,
+    )
+
+    merged_files = sorted((output_dir / "healpix").glob("*/*.parquet"))
+    merged_df = pd.concat([pd.read_parquet(p) for p in merged_files], ignore_index=True)
+    assert list(merged_df.columns) == OUTPUT_COLS
+    assert merged_df.loc[0, "source"] == "hip"
+    assert str(merged_df.loc[0, "source_id"]) == "2001"
+
+    raw_files = sorted((sidecar_dir / "gaia_enrichment").glob("*/*.parquet"))
+    raw_df = pd.concat([pd.read_parquet(p) for p in raw_files], ignore_index=True)
+    assert raw_df.loc[0, "source"] == "hip"
+    assert str(raw_df.loc[0, "source_id"]) == "2001"
+    assert int(raw_df.loc[0, "gaia_source_id"]) == 1001
+    assert raw_df.loc[0, "gaia_ref_epoch"] == pytest.approx(2016.0)
+
+    motion_files = sorted((sidecar_dir / "motion").glob("*/*.parquet"))
+    motion_df = pd.concat([pd.read_parquet(p) for p in motion_files], ignore_index=True)
+    assert motion_df.loc[0, "pmra_masyr"] == pytest.approx(12.5)
+
+    mass_files = sorted((sidecar_dir / "mass").glob("*/*.parquet"))
+    mass_df = pd.concat([pd.read_parquet(p) for p in mass_files], ignore_index=True)
+    assert mass_df.loc[0, "mass_flame_solar"] == pytest.approx(0.8)
 
 
 # ---------------------------------------------------------------------------

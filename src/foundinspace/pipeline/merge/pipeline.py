@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 
 from foundinspace.pipeline.common.ids import normalize_compound_key
 from foundinspace.pipeline.constants import OUTPUT_COLS
-from foundinspace.pipeline.merge import policy, shards
+from foundinspace.pipeline.merge import policy, shards, sidecars
 from foundinspace.pipeline.merge.decisions import DECISION_COLS, decision_record
 from foundinspace.pipeline.merge.overrides import (
     OVERRIDE_REQUIRED_COLS,
@@ -136,6 +136,7 @@ def run_merge(
     crossmatch_path: Path,
     overrides_path: Path,
     output_dir: Path,
+    sidecar_output_dir: Path | None = None,
     healpix_order: int = 3,
     force: bool = False,
 ) -> MergeReport:
@@ -148,6 +149,7 @@ def run_merge(
     crossmatch_path = Path(crossmatch_path).expanduser()
     overrides_path = Path(overrides_path).expanduser()
     output_dir = Path(output_dir).expanduser()
+    sidecar_root = Path(sidecar_output_dir).expanduser() if sidecar_output_dir else None
     shards_root = output_dir / "healpix"
     decisions_path = output_dir / "merge_decisions.parquet"
     report_path = output_dir / "merge_report.json"
@@ -164,8 +166,16 @@ def run_merge(
             raise FileExistsError(str(output_dir))
         if force:
             shutil.rmtree(output_dir)
+    if sidecar_root is not None and sidecar_root.exists():
+        has_content = any(sidecar_root.iterdir())
+        if has_content and not force:
+            raise FileExistsError(str(sidecar_root))
+        if force:
+            shutil.rmtree(sidecar_root)
     output_dir.mkdir(parents=True, exist_ok=True)
     shards_root.mkdir(parents=True, exist_ok=True)
+    if sidecar_root is not None:
+        sidecar_root.mkdir(parents=True, exist_ok=True)
 
     nside = 2**healpix_order
     hp = shards._build_healpix(healpix_order)
@@ -197,6 +207,7 @@ def run_merge(
 
     # Small state only (no per-row unmatched storage).
     write_seq_by_pixel: dict[int, int] = {}
+    sidecar_seq_by_key: dict[tuple[str, int], int] = {}
     resolved_hip_ids: set[int] = set()
     processed_override_ids: set[str] = set()
     decisions: list[dict[str, Any]] = []
@@ -242,10 +253,20 @@ def run_merge(
         dynamic_ncols=True,
     ):
         special_out_rows: list[dict[str, Any]] = []
+        special_sidecar_gaia_rows: list[dict[str, Any]] = []
+        special_sidecar_dense_rows: list[dict[str, Any]] = []
         _validate_parquet_columns(gaia_file, OUTPUT_COLS)
         parquet_file = pq.ParquetFile(gaia_file)
-        file_col_names = set(parquet_file.schema_arrow.names)
-        gaia_read_cols = OUTPUT_COLS + [c for c in _GAIA_AUX_COLS if c in file_col_names]
+        schema_names = parquet_file.schema_arrow.names
+        file_col_names = set(schema_names)
+        enrichment_cols = sidecars.gaia_enrichment_columns(schema_names)
+        gaia_read_cols = list(
+            dict.fromkeys(
+                OUTPUT_COLS
+                + [c for c in _GAIA_AUX_COLS if c in file_col_names]
+                + enrichment_cols
+            )
+        )
         gaia_num_rows = parquet_file.metadata.num_rows
         batch_bar_total = (
             (gaia_num_rows + MERGE_BATCH_SIZE - 1) // MERGE_BATCH_SIZE
@@ -282,6 +303,19 @@ def run_merge(
                 )
                 report.rows_emitted_total += written
                 report.unmatched_gaia += written
+                if sidecar_root is not None:
+                    sidecar_df = sidecars.from_frames(
+                        gaia_unmatched_df,
+                        out,
+                        enrichment_cols=enrichment_cols,
+                    )
+                    sidecars.write_gaia_sidecars(
+                        sidecar_df,
+                        hp=hp,
+                        sidecar_root=sidecar_root,
+                        phase_tag=f"gaia_{gaia_file.stem}",
+                        seq_by_key=sidecar_seq_by_key,
+                    )
 
             special_read_cols = [c for c in gaia_read_cols if c in gaia_df.columns]
             special_rows = gaia_df.loc[special_mask, special_read_cols].to_dict(orient="records")
@@ -310,7 +344,10 @@ def run_merge(
                     winner_catalog = ""
                     winner_source_id = ""
                     if action == "replace":
-                        special_out_rows.append(_output_row(override))
+                        dense_row = _output_row(override)
+                        special_out_rows.append(dense_row)
+                        special_sidecar_gaia_rows.append(gaia_rec)
+                        special_sidecar_dense_rows.append(dense_row)
                         report.override_replace_applied += 1
                         winner_catalog = "manual"
                         winner_source_id = str(override["source_id"])
@@ -346,7 +383,10 @@ def run_merge(
                     continue
 
                 if hip_rec is None or hip_id in resolved_hip_ids:
-                    special_out_rows.append(_output_row(gaia_rec))
+                    dense_row = _output_row(gaia_rec)
+                    special_out_rows.append(dense_row)
+                    special_sidecar_gaia_rows.append(gaia_rec)
+                    special_sidecar_dense_rows.append(dense_row)
                     report.unmatched_gaia += 1
                     continue
 
@@ -367,6 +407,8 @@ def run_merge(
                     winner_row = _output_row(hip_rec)
                     report.matched_winner_hip += 1
                 special_out_rows.append(winner_row)
+                special_sidecar_gaia_rows.append(gaia_rec)
+                special_sidecar_dense_rows.append(winner_row)
                 resolved_hip_ids.add(int(hip_id))
                 report.matched_pairs_scored += 1
                 _ruwe = policy._safe_float(gaia_rec.get("ruwe"))
@@ -413,6 +455,19 @@ def run_merge(
                 seq_by_pixel=write_seq_by_pixel,
             )
             report.rows_emitted_total += written
+            if sidecar_root is not None:
+                sidecar_df = sidecars.from_records(
+                    special_sidecar_gaia_rows,
+                    special_sidecar_dense_rows,
+                    enrichment_cols=enrichment_cols,
+                )
+                sidecars.write_gaia_sidecars(
+                    sidecar_df,
+                    hp=hp,
+                    sidecar_root=sidecar_root,
+                    phase_tag=f"gaia_special_{gaia_file.stem}",
+                    seq_by_key=sidecar_seq_by_key,
+                )
 
     # Flush HIP side, including Gaia-targeted overrides where Gaia row is absent.
     hip_out_rows: list[dict[str, Any]] = []

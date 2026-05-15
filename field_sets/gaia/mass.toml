@@ -1,0 +1,103 @@
+[[fields]]
+name = "mass_flame_solar"
+expression = "ap.mass_flame"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar mass"
+
+[[fields]]
+name = "mass_flame_lower_solar"
+expression = "ap.mass_flame_lower"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar mass"
+
+[[fields]]
+name = "mass_flame_upper_solar"
+expression = "ap.mass_flame_upper"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar mass"
+
+[[fields]]
+name = "lum_flame_solar"
+expression = "ap.lum_flame"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar luminosity"
+
+[[fields]]
+name = "lum_flame_lower_solar"
+expression = "ap.lum_flame_lower"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar luminosity"
+
+[[fields]]
+name = "lum_flame_upper_solar"
+expression = "ap.lum_flame_upper"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar luminosity"
+
+[[fields]]
+name = "radius_flame_solar"
+expression = "ap.radius_flame"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar radius"
+
+[[fields]]
+name = "radius_flame_lower_solar"
+expression = "ap.radius_flame_lower"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar radius"
+
+[[fields]]
+name = "radius_flame_upper_solar"
+expression = "ap.radius_flame_upper"
+dtype = "float64"
+sidecar = "mass"
+unit = "solar radius"
+
+[[fields]]
+name = "teff_gspphot"
+source = "input"
+column = "teff_gspphot"
+dtype = "float64"
+sidecar = "mass"
+unit = "K"
+
+[[fields]]
+name = "logg_gspphot"
+source = "input"
+column = "logg_gspphot"
+dtype = "float64"
+sidecar = "mass"
+
+[[fields]]
+name = "mh_gspphot"
+expression = "ap.mh_gspphot"
+dtype = "float64"
+sidecar = "mass"
+
+[[fields]]
+name = "ag_gspphot"
+source = "input"
+column = "ag_gspphot"
+dtype = "float64"
+sidecar = "mass"
+unit = "mag"
+
+[[fields]]
+name = "flags_flame"
+expression = "ap.flags_flame"
+dtype = "string"
+sidecar = "mass"
+
+[[fields]]
+name = "evolstage_flame"
+expression = "ap.evolstage_flame"
+dtype = "int64"
+sidecar = "mass"

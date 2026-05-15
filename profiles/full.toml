@@ -5,6 +5,14 @@ input_dir = "data/catalogs/gaia"
 output_dir = "data/processed/gaia"
 # mag_limit = 15.0
 
+[gaia_download]
+mode = "full"
+access = "authenticated"
+state_db = "data/processed/gaia-download.sqlite"
+row_cap = 55000000
+max_active_jobs = 4
+carry_field_sets = ["motion", "mass"]
+
 [gaia-to-hip]
 download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"
 output_parquet = "data/processed/gaia_hip_map.parquet"

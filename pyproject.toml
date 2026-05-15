@@ -16,7 +16,7 @@ dependencies = [
     "numpy>=2.4.3",
     "pandas>=3.0.1",
     "pyarrow>=23.0.1",
-    "votpipe>=0.1.0",
+    "votpipe>=0.2.1",
     "pyyaml>=6.0.3",
     "tqdm>=4.67.3",
 ]
@@ -29,6 +29,7 @@ packages = ["src/foundinspace"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "profiles" = "profiles"
+"field_sets" = "field_sets"
 
 [dependency-groups]
 dev = [

@@ -27,9 +27,9 @@ uv run fis-pipeline project init project.toml
 The generated file uses paths relative to the project file location. See
 [project-file.md](project-file.md) and [profiles.md](profiles.md).
 
-## Current Small-Profile Flow
+## Small-Profile Flow
 
-The non-Gaia catalog sources are small and automated:
+Build the small non-Gaia catalog sources:
 
 ```bash
 uv run fis-pipeline hip build --project project.toml
@@ -38,13 +38,32 @@ uv run fis-pipeline identifiers build --project project.toml
 uv run fis-pipeline overrides build --project project.toml
 ```
 
-Gaia VOTable download automation is intentionally the next step. Until then,
-place Gaia `.vot`, `.vot.gz`, or `.vot.xz` files in `[gaia] input_dir`, then run:
+Download and stage the small Gaia sample:
 
 ```bash
+uv run fis-pipeline gaia download plan --project project.toml
+uv run fis-pipeline gaia download run --project project.toml
 uv run fis-pipeline gaia build --project project.toml
+```
+
+For a browser-assisted first Gaia run, generate the ADQL instead:
+
+```bash
+uv run fis-pipeline gaia download queries --project project.toml
+```
+
+Paste the generated `download.adql` into the Gaia Archive web UI, download a
+VOTable gzip, place it under `[gaia] input_dir`, and then run `gaia build`.
+
+Merge the staged catalogs:
+
+```bash
 uv run fis-pipeline merge build --project project.toml
 ```
+
+The merge writes dense HEALPix shards plus Gaia enrichment, motion, and mass
+sidecars. For Gaia download details, credentials, and resume behavior, see
+[operations/gaia-download.md](operations/gaia-download.md).
 
 ## Learn by Stage
 

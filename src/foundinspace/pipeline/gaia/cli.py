@@ -2,6 +2,8 @@ from pathlib import Path
 
 import click
 
+from foundinspace.pipeline.gaia.download.cli import cli as download_cli
+from foundinspace.pipeline.gaia.download.fieldsets import load_gaia_field_sets
 from foundinspace.pipeline.gaia.pipeline import main
 from foundinspace.pipeline.project import load_project
 
@@ -11,6 +13,9 @@ _VOT_SUFFIXES = {".vot", ".vot.gz", ".vot.xz"}
 @click.group(name="gaia")
 def cli():
     pass
+
+
+cli.add_command(download_cli)
 
 
 def _load_project_or_die(project_path: Path):
@@ -49,6 +54,9 @@ def build_gaia(
 
     output_root = project.gaia.output_dir
     output_root.mkdir(parents=True, exist_ok=True)
+    carry_fields = ()
+    if project.gaia_download.configured:
+        carry_fields = load_gaia_field_sets(project.gaia_download.carry_field_sets)
 
     for input_file in input_files:
         output_name = _output_path_for(input_file)
@@ -58,6 +66,7 @@ def build_gaia(
             output_file,
             skip_if_exists=not force,
             mag_limit=project.gaia.mag_limit,
+            carry_fields=carry_fields,
         )
 
 

@@ -123,6 +123,38 @@ def test_load_project_gaia_mag_limit_rejects_non_numeric(tmp_path: Path) -> None
         _ = project.gaia.mag_limit
 
 
+def test_load_project_gaia_download_config_and_merge_sidecar_default(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text()
+        + """
+[gaia_download]
+mode = "small"
+access = "auto"
+mag_limit = 9.0
+state_db = "data/processed/gaia-download.sqlite"
+row_cap = 123
+max_active_jobs = 2
+carry_field_sets = ["motion", "mass"]
+""",
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    assert project.gaia_download.configured
+    assert project.gaia_download.mode == "small"
+    assert project.gaia_download.access == "auto"
+    assert project.gaia_download.mag_limit == 9.0
+    assert project.gaia_download.state_db == tmp_path / "data/processed/gaia-download.sqlite"
+    assert project.gaia_download.row_cap == 123
+    assert project.gaia_download.max_active_jobs == 2
+    assert project.gaia_download.carry_field_sets == ("motion", "mass")
+    assert project.merge.sidecar_output_dir == tmp_path / "data/processed/sidecars"
+
+
 def test_load_project_rejects_unknown_keys_in_merge(tmp_path: Path) -> None:
     project_path = tmp_path / "project.toml"
     project_path.write_text(
@@ -134,6 +166,23 @@ def test_load_project_rejects_unknown_keys_in_merge(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match=r"Unknown key\(s\) in \[merge\]"):
+        load_project(project_path)
+
+
+def test_load_project_rejects_unknown_keys_in_gaia_download(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text()
+        + """
+[gaia_download]
+mode = "small"
+state_db = "state.sqlite"
+unexpected = true
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"Unknown key\(s\) in \[gaia_download\]"):
         load_project(project_path)
 
 
@@ -260,7 +309,9 @@ def test_render_project_template_small_profile_sets_mag_limit() -> None:
     parsed = tomllib.loads(render_project_template(profile="small"))
 
     assert parsed["gaia"]["input_dir"] == "data/catalogs/gaia-small"
-    assert parsed["gaia"]["mag_limit"] == 8.0
+    assert parsed["gaia"]["mag_limit"] == 9.0
+    assert parsed["gaia_download"]["mode"] == "small"
+    assert parsed["gaia_download"]["mag_limit"] == 9.0
     assert parsed["merge"]["output_dir"] == "data/processed/merged-small"
 
 
