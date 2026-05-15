@@ -10,6 +10,7 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -19,6 +20,8 @@ REPORT_FILENAME = "merge_quality_report.json"
 
 BATCH_SIZE = 250_000
 HIP_STANDARD_SOLUTION = 5
+CLOSE_PAIR_HIGH_SEP_ARCSEC = 0.25
+CLOSE_PAIR_HIGH_MAG_DELTA = 0.1
 
 QUALITY_ISSUE_COLS = [
     "issue_type",
@@ -35,10 +38,19 @@ QUALITY_ISSUE_COLS = [
     "distance_ratio",
     "distance_frac_diff",
     "mag_abs_delta",
+    "apparent_mag_delta",
+    "gaia_apparent_mag",
+    "hip_apparent_mag",
     "gaia_r_pc",
     "hip_r_pc",
     "gaia_mag_abs",
     "hip_mag_abs",
+    "gaia_ra_deg",
+    "gaia_dec_deg",
+    "hip_ra_deg",
+    "hip_dec_deg",
+    "merged_ra_deg",
+    "merged_dec_deg",
     "merged_r_pc",
     "merged_mag_abs",
     "merged_teff",
@@ -70,6 +82,7 @@ class QualityReport:
     override_targets: int
     matched_pair_issues: int
     merged_row_issues: int
+    close_pair_issues: int
     total_issues: int
     issue_counts_by_type: dict[str, int]
     issue_counts_by_severity: dict[str, int]
@@ -94,6 +107,9 @@ def run_quality_report(
     extreme_abs_mag: float = -10.0,
     luminous_abs_mag: float = -8.0,
     remote_luminous_pc: float = 20_000.0,
+    include_close_pairs: bool = False,
+    close_pair_max_sep_arcsec: float = 5.0,
+    close_pair_max_mag_delta: float = 0.5,
     force: bool = False,
 ) -> QualityReport:
     """Write a JSON quality summary plus Parquet table of suspicious stars."""
@@ -165,9 +181,20 @@ def run_quality_report(
         luminous_abs_mag=luminous_abs_mag,
         remote_luminous_pc=remote_luminous_pc,
     )
+    close_pair_issues = (
+        _close_cross_catalog_pair_issues(
+            shards_root,
+            crossmatch_path=crossmatch_path,
+            override_keys=override_keys,
+            max_sep_arcsec=close_pair_max_sep_arcsec,
+            max_mag_delta=close_pair_max_mag_delta,
+        )
+        if include_close_pairs
+        else []
+    )
 
     issues = pd.DataFrame(
-        [*matched_issues, *merged_issues],
+        [*matched_issues, *merged_issues, *close_pair_issues],
         columns=QUALITY_ISSUE_COLS,
     )
     issues = _attach_labels(issues, labels)
@@ -192,12 +219,15 @@ def run_quality_report(
             "extreme_abs_mag": extreme_abs_mag,
             "luminous_abs_mag": luminous_abs_mag,
             "remote_luminous_pc": remote_luminous_pc,
+            "close_pair_max_sep_arcsec": close_pair_max_sep_arcsec,
+            "close_pair_max_mag_delta": close_pair_max_mag_delta,
         },
         score_decisions=int(len(score_decisions)),
         override_decisions=int(len(decisions) - len(score_decisions)),
         override_targets=int(len(override_keys)),
         matched_pair_issues=int(len(matched_issues)),
         merged_row_issues=int(len(merged_issues)),
+        close_pair_issues=int(len(close_pair_issues)),
         total_issues=int(len(issues)),
         issue_counts_by_type=_value_counts(issues, "issue_type"),
         issue_counts_by_severity=_value_counts(issues, "severity"),
@@ -304,10 +334,9 @@ def _matched_pair_issues(
     farther = pd.concat([gaia_r, hip_r], axis=1).max(axis=1)
     pairs["distance_ratio"] = farther / nearer
     pairs["distance_frac_diff"] = pairs["distance_ratio"] - 1.0
-    pairs["mag_abs_delta"] = (
-        pd.to_numeric(pairs["gaia_mag_abs"], errors="coerce")
-        - pd.to_numeric(pairs["hip_mag_abs"], errors="coerce")
-    )
+    pairs["mag_abs_delta"] = pd.to_numeric(
+        pairs["gaia_mag_abs"], errors="coerce"
+    ) - pd.to_numeric(pairs["hip_mag_abs"], errors="coerce")
 
     gaia_better = pairs["gaia_score_use"] < pairs["hip_score_use"]
     hip_better = pairs["hip_score_use"] < pairs["gaia_score_use"]
@@ -316,9 +345,8 @@ def _matched_pair_issues(
         hip_better & ~winner.eq("hip")
     )
     pairs["gaia_ruwe_high"] = pairs["gaia_ruwe_use"] > ruwe_threshold
-    pairs["hip_non_standard"] = (
-        pairs["hip_solution_type_use"].notna()
-        & (pairs["hip_solution_type_use"] != HIP_STANDARD_SOLUTION)
+    pairs["hip_non_standard"] = pairs["hip_solution_type_use"].notna() & (
+        pairs["hip_solution_type_use"] != HIP_STANDARD_SOLUTION
     )
     pairs["override_covered"] = [
         ("gaia", str(int(g))) in override_keys or ("hip", str(int(h))) in override_keys
@@ -340,7 +368,11 @@ def _matched_pair_issues(
     mask = (
         distance_disagreement
         & ~pairs["override_covered"]
-        & (pairs["winner_not_lowest_score"] | both_catalogs_suspect | gaia_winner_suspect)
+        & (
+            pairs["winner_not_lowest_score"]
+            | both_catalogs_suspect
+            | gaia_winner_suspect
+        )
     )
 
     issues: list[dict[str, Any]] = []
@@ -406,13 +438,17 @@ def _merged_row_issues(
     columns = [
         "source",
         "source_id",
+        "ra_deg",
+        "dec_deg",
         "r_pc",
         "mag_abs",
         "teff",
         "astrometry_quality",
         "photometry_quality",
     ]
-    for batch in _iter_parquet_batches(sorted(shards_root.glob("*/*.parquet")), columns):
+    for batch in _iter_parquet_batches(
+        sorted(shards_root.glob("*/*.parquet")), columns
+    ):
         if batch.empty:
             continue
         source = batch["source"].astype(str)
@@ -458,6 +494,8 @@ def _merged_row_issues(
                     reasons=reasons,
                     source=rec.get("source"),
                     source_id=rec.get("source_id"),
+                    merged_ra_deg=rec.get("ra_deg"),
+                    merged_dec_deg=rec.get("dec_deg"),
                     merged_r_pc=rec.get("r_pc"),
                     merged_mag_abs=rec.get("mag_abs"),
                     merged_teff=rec.get("teff"),
@@ -466,6 +504,187 @@ def _merged_row_issues(
                 )
             )
     return issues
+
+
+def _close_cross_catalog_pair_issues(
+    shards_root: Path,
+    *,
+    crossmatch_path: Path,
+    override_keys: set[tuple[str, str]],
+    max_sep_arcsec: float,
+    max_mag_delta: float,
+) -> list[dict[str, Any]]:
+    """Find likely Gaia/Hipparcos duplicate rows left in merged output."""
+    ckdtree = _require_ckdtree()
+    candidates = _load_close_pair_candidates(shards_root, override_keys)
+    gaia = candidates.loc[candidates["source"].eq("gaia")].reset_index(drop=True)
+    hip = candidates.loc[candidates["source"].eq("hip")].reset_index(drop=True)
+    if gaia.empty or hip.empty:
+        return []
+
+    gaia_xyz = _unit_vectors(gaia["ra_deg"], gaia["dec_deg"])
+    hip_xyz = _unit_vectors(hip["ra_deg"], hip["dec_deg"])
+    chord_radius = 2.0 * math.sin(math.radians(max_sep_arcsec / 3600.0) / 2.0)
+    neighbour_lists = ckdtree(gaia_xyz).query_ball_tree(
+        ckdtree(hip_xyz),
+        r=chord_radius,
+    )
+    if not any(neighbour_lists):
+        return []
+
+    known_pairs = _load_crossmatch_keys(crossmatch_path)
+    issues: list[dict[str, Any]] = []
+    for gaia_i, hip_indices in enumerate(neighbour_lists):
+        if not hip_indices:
+            continue
+        gaia_rec = gaia.iloc[gaia_i]
+        gaia_vec = gaia_xyz[gaia_i]
+        hip_subset = hip.iloc[hip_indices]
+        hip_subset_xyz = hip_xyz[hip_indices]
+        dots = np.clip(hip_subset_xyz @ gaia_vec, -1.0, 1.0)
+        sep_arcsec = np.degrees(np.arccos(dots)) * 3600.0
+        mag_delta = np.abs(
+            hip_subset["apparent_mag"].to_numpy(dtype=float)
+            - float(gaia_rec["apparent_mag"])
+        )
+        keep = (sep_arcsec <= max_sep_arcsec) & (mag_delta <= max_mag_delta)
+        for local_i in np.flatnonzero(keep):
+            hip_rec = hip_subset.iloc[int(local_i)]
+            gaia_id = str(gaia_rec["source_id"])
+            hip_id = str(hip_rec["source_id"])
+            if (gaia_id, hip_id) in known_pairs:
+                continue
+            reasons = [
+                "close_cross_catalog_position",
+                "similar_apparent_magnitude",
+                "not_in_gaia_hip_crossmatch",
+            ]
+            severity = (
+                "high"
+                if sep_arcsec[local_i] <= CLOSE_PAIR_HIGH_SEP_ARCSEC
+                and mag_delta[local_i] <= CLOSE_PAIR_HIGH_MAG_DELTA
+                else "medium"
+            )
+            issues.append(
+                _issue_record(
+                    issue_type="close_cross_catalog_pair",
+                    severity=severity,
+                    reasons=reasons,
+                    source="hip",
+                    source_id=hip_id,
+                    gaia_source_id=gaia_id,
+                    hip_source_id=hip_id,
+                    angular_distance_arcsec=float(sep_arcsec[local_i]),
+                    apparent_mag_delta=float(mag_delta[local_i]),
+                    gaia_apparent_mag=gaia_rec["apparent_mag"],
+                    hip_apparent_mag=hip_rec["apparent_mag"],
+                    gaia_r_pc=gaia_rec["r_pc"],
+                    hip_r_pc=hip_rec["r_pc"],
+                    gaia_mag_abs=gaia_rec["mag_abs"],
+                    hip_mag_abs=hip_rec["mag_abs"],
+                    gaia_ra_deg=gaia_rec["ra_deg"],
+                    gaia_dec_deg=gaia_rec["dec_deg"],
+                    hip_ra_deg=hip_rec["ra_deg"],
+                    hip_dec_deg=hip_rec["dec_deg"],
+                    gaia_score=gaia_rec["astrometry_quality"],
+                    hip_score=hip_rec["astrometry_quality"],
+                )
+            )
+    return sorted(
+        issues,
+        key=lambda rec: (
+            _safe_float(rec["angular_distance_arcsec"]),
+            _safe_float(rec["apparent_mag_delta"]),
+        ),
+    )
+
+
+def _load_close_pair_candidates(
+    shards_root: Path,
+    override_keys: set[tuple[str, str]],
+) -> pd.DataFrame:
+    columns = [
+        "source",
+        "source_id",
+        "ra_deg",
+        "dec_deg",
+        "r_pc",
+        "mag_abs",
+        "teff",
+        "astrometry_quality",
+        "photometry_quality",
+    ]
+    chunks: list[pd.DataFrame] = []
+    for batch in _iter_parquet_batches(
+        sorted(shards_root.glob("*/*.parquet")), columns
+    ):
+        source = batch["source"].astype(str)
+        source_id = batch["source_id"].astype(str)
+        catalog_mask = source.isin(["gaia", "hip"])
+        override_mask = pd.Series(
+            [
+                (src, sid) in override_keys
+                for src, sid in zip(source, source_id, strict=True)
+            ],
+            index=batch.index,
+        )
+        numeric = batch.copy()
+        for col in [
+            "ra_deg",
+            "dec_deg",
+            "r_pc",
+            "mag_abs",
+            "astrometry_quality",
+            "photometry_quality",
+        ]:
+            numeric[col] = pd.to_numeric(numeric[col], errors="coerce")
+        finite_mask = (
+            np.isfinite(numeric["ra_deg"])
+            & np.isfinite(numeric["dec_deg"])
+            & np.isfinite(numeric["r_pc"])
+            & np.isfinite(numeric["mag_abs"])
+            & (numeric["r_pc"] > 0)
+        )
+        out = numeric.loc[catalog_mask & ~override_mask & finite_mask].copy()
+        if out.empty:
+            continue
+        out["source"] = source.loc[out.index].to_numpy()
+        out["source_id"] = source_id.loc[out.index].to_numpy()
+        out["apparent_mag"] = out["mag_abs"] + 5.0 * np.log10(out["r_pc"]) - 5.0
+        out = out.loc[np.isfinite(out["apparent_mag"])]
+        if not out.empty:
+            chunks.append(
+                out[
+                    [
+                        "source",
+                        "source_id",
+                        "ra_deg",
+                        "dec_deg",
+                        "r_pc",
+                        "mag_abs",
+                        "apparent_mag",
+                        "teff",
+                        "astrometry_quality",
+                        "photometry_quality",
+                    ]
+                ]
+            )
+    if not chunks:
+        return pd.DataFrame(
+            columns=[
+                "source",
+                "source_id",
+                "ra_deg",
+                "dec_deg",
+                "r_pc",
+                "mag_abs",
+                "apparent_mag",
+                "teff",
+                "astrometry_quality",
+                "photometry_quality",
+            ]
+        )
+    return pd.concat(chunks, ignore_index=True)
 
 
 def _issue_record(
@@ -549,6 +768,44 @@ def _load_override_keys(path: Path) -> set[tuple[str, str]]:
     }
 
 
+def _load_crossmatch_keys(path: Path) -> set[tuple[str, str]]:
+    df = _read_parquet_columns(path, ["gaia_source_id", "hip_source_id"])
+    if df.empty:
+        return set()
+    gaia_ids = _parse_uint_series(df["gaia_source_id"])
+    hip_ids = _parse_uint_series(df["hip_source_id"])
+    return {
+        (str(int(gaia_id)), str(int(hip_id)))
+        for gaia_id, hip_id in zip(gaia_ids, hip_ids, strict=True)
+        if not pd.isna(gaia_id) and not pd.isna(hip_id)
+    }
+
+
+def _unit_vectors(ra_deg: pd.Series, dec_deg: pd.Series) -> np.ndarray:
+    ra = np.radians(pd.to_numeric(ra_deg, errors="coerce").to_numpy(dtype=float))
+    dec = np.radians(pd.to_numeric(dec_deg, errors="coerce").to_numpy(dtype=float))
+    cos_dec = np.cos(dec)
+    return np.column_stack(
+        [
+            cos_dec * np.cos(ra),
+            cos_dec * np.sin(ra),
+            np.sin(dec),
+        ]
+    )
+
+
+def _require_ckdtree():
+    try:
+        from scipy.spatial import cKDTree
+    except ImportError as exc:
+        raise RuntimeError(
+            "Close-pair detection requires the optional audit dependency group. "
+            "Install or run with `uv sync --group audit` or "
+            "`uv run --group audit ...`."
+        ) from exc
+    return cKDTree
+
+
 def _load_labels(path: Path | None) -> pd.DataFrame:
     cols = [
         "source",
@@ -574,8 +831,8 @@ def _load_labels(path: Path | None) -> pd.DataFrame:
     hd_mask = label.eq("") & df["hd"].notna()
     label.loc[hd_mask] = "HD " + df.loc[hd_mask, "hd"].map(_string_id).astype(str)
     hip_mask = label.eq("") & df["hip_id"].notna()
-    label.loc[hip_mask] = (
-        "HIP " + df.loc[hip_mask, "hip_id"].map(_string_id).astype(str)
+    label.loc[hip_mask] = "HIP " + df.loc[hip_mask, "hip_id"].map(_string_id).astype(
+        str
     )
     out = df[["source", "source_id"]].copy()
     out["label"] = label

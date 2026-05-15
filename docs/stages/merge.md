@@ -20,10 +20,25 @@ override policy, and write canonical HEALPix-partitioned output.
 uv run fis-pipeline merge build --project project.toml
 ```
 
+To merge with an audit-produced Gaia/HIP map:
+
+```bash
+uv run fis-pipeline merge build --project project.toml \
+  --crossmatch-path data/processed/merged/audit/combined_gaia_hip_map.parquet
+```
+
 After a merge, write the post-merge quality audit:
 
 ```bash
 uv run fis-pipeline merge quality-report --project project.toml
+```
+
+To also scan for likely unresolved Gaia/Hipparcos duplicates, install or run
+with the optional audit dependency group:
+
+```bash
+uv run --group audit fis-pipeline merge quality-report --project project.toml \
+  --include-close-pairs --force
 ```
 
 ## Outputs
@@ -35,6 +50,10 @@ Under `[merge] output_dir`:
 - `merge_decisions.parquet`
 - `merge_quality_report.json`
 - `merge_quality_issues.parquet`
+
+The close-pair audit flags non-overridden Gaia/Hipparcos rows that are near each
+other on the sky, have similar reconstructed apparent magnitudes, and are not
+present as an exact pair in the Gaia-HIP crossmatch.
 
 Under `[merge] sidecar_output_dir`, or a sibling `sidecars` directory when not
 set:

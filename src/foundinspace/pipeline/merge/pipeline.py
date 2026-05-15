@@ -34,6 +34,7 @@ MERGE_BATCH_SIZE = 1_000_000
 _GAIA_AUX_COLS = ["ruwe", "phot_g_mean_mag"]
 _HIP_AUX_COLS = ["Sn", "Hpmag"]
 _CROSS_AUX_COLS = ["number_of_neighbours", "angular_distance"]
+_CROSS_MAPPING_SOURCE_COL = "mapping_source"
 
 
 @dataclass
@@ -108,6 +109,18 @@ def _validate_parquet_columns(path: Path, required_cols: list[str]) -> None:
         raise ValueError(f"Missing required columns in {path}: {missing}")
 
 
+def _clear_output_dir_preserving_audit(output_dir: Path) -> None:
+    """Clear merge outputs while preserving audit artifacts stored under it."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for child in output_dir.iterdir():
+        if child.name == "audit" and child.is_dir():
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
 def _build_crossmatch_maps(df: pd.DataFrame) -> tuple[dict[int, int], dict[int, int]]:
     gaia_to_hip: dict[int, int] = {}
     hip_to_gaia: dict[int, int] = {}
@@ -165,7 +178,7 @@ def run_merge(
         if has_content and not force:
             raise FileExistsError(str(output_dir))
         if force:
-            shutil.rmtree(output_dir)
+            _clear_output_dir_preserving_audit(output_dir)
     if sidecar_root is not None and sidecar_root.exists():
         has_content = any(sidecar_root.iterdir())
         if has_content and not force:
@@ -195,13 +208,18 @@ def run_merge(
     )
     gaia_to_hip, hip_to_gaia = _build_crossmatch_maps(cross_df)
 
-    # V2: crossmatch auxiliary data (number_of_neighbours, angular_distance).
+    # V2: crossmatch auxiliary data (mapping source, neighbours, angular distance).
     cross_aux_by_gaia: dict[int, dict[str, Any]] = {}
     for col in _CROSS_AUX_COLS:
         if col not in cross_df.columns:
             cross_df[col] = np.nan
-    for rec in cross_df[["gaia_source_id", *_CROSS_AUX_COLS]].itertuples(index=False):
+    if _CROSS_MAPPING_SOURCE_COL not in cross_df.columns:
+        cross_df[_CROSS_MAPPING_SOURCE_COL] = pd.NA
+    for rec in cross_df[
+        ["gaia_source_id", _CROSS_MAPPING_SOURCE_COL, *_CROSS_AUX_COLS]
+    ].itertuples(index=False):
         cross_aux_by_gaia[int(rec.gaia_source_id)] = {
+            "mapping_source": rec.mapping_source,
             "number_of_neighbours": policy._safe_int(rec.number_of_neighbours),
             "angular_distance": policy._safe_float(rec.angular_distance),
         }
@@ -336,6 +354,7 @@ def run_merge(
                     hip_id=hip_id,
                 )
                 if override is not None:
+                    cross_aux = cross_aux_by_gaia.get(gaia_id, {})
                     override_id = str(override["override_id"])
                     if override_id in processed_override_ids:
                         # Pair was already resolved by the counterpart route.
@@ -373,6 +392,7 @@ def run_merge(
                             hip_source_id=str(hip_id) if hip_id is not None else pd.NA,
                             winner_catalog=winner_catalog or pd.NA,
                             winner_source_id=winner_source_id or pd.NA,
+                            mapping_source=cross_aux.get("mapping_source", pd.NA),
                             gaia_score=policy._safe_score(
                                 gaia_rec.get("astrometry_quality")
                             ),
@@ -437,6 +457,7 @@ def run_merge(
                         winner_source_id=str(
                             gaia_id if winner_catalog == "gaia" else int(hip_id)
                         ),
+                        mapping_source=cross_aux.get("mapping_source", pd.NA),
                         gaia_score=policy._safe_score(
                             gaia_rec.get("astrometry_quality")
                         ),
@@ -523,6 +544,9 @@ def run_merge(
                     winner_source_id=str(override["source_id"])
                     if action == "replace"
                     else pd.NA,
+                    mapping_source=cross_aux_by_gaia.get(gaia_id or -1, {}).get(
+                        "mapping_source", pd.NA
+                    ),
                     hip_score=policy._safe_score(hip_rec.get("astrometry_quality")),
                     override_id=override_id,
                     override_action=action,

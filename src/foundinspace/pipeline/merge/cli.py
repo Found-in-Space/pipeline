@@ -30,9 +30,16 @@ def _load_project_or_die(project_path: Path, *required: str):
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Path to pipeline project TOML.",
 )
+@click.option(
+    "--crossmatch-path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Override Gaia/HIP crossmatch path; defaults to [gaia-to-hip] output.",
+)
 @click.option("--force", "-f", is_flag=True, default=False)
 def build(
     project_path: Path,
+    crossmatch_path: Path | None,
     force: bool,
 ) -> None:
     """Run the streaming merge and emit HEALPix-partitioned outputs."""
@@ -45,10 +52,11 @@ def build(
         "overrides",
     )
     output_dir = project.merge.output_dir
+    resolved_crossmatch_path = crossmatch_path or project.gaia_to_hip.output_parquet
     report = run_merge(
         gaia_dir=project.gaia.output_dir,
         hip_path=project.hip.output_parquet,
-        crossmatch_path=project.gaia_to_hip.output_parquet,
+        crossmatch_path=resolved_crossmatch_path,
         overrides_path=project.overrides.output_parquet,
         output_dir=output_dir,
         sidecar_output_dir=project.merge.sidecar_output_dir,
@@ -90,11 +98,37 @@ def build(
     show_default=True,
     help="Gaia RUWE threshold used for suspicious matched-pair reports.",
 )
+@click.option(
+    "--include-close-pairs/--no-include-close-pairs",
+    default=False,
+    show_default=True,
+    help=(
+        "Also report close Gaia/HIP sky-position and apparent-magnitude pairs. "
+        "Requires the optional audit dependency group."
+    ),
+)
+@click.option(
+    "--close-pair-max-sep-arcsec",
+    type=float,
+    default=5.0,
+    show_default=True,
+    help="Maximum angular separation for close Gaia/HIP pair detection.",
+)
+@click.option(
+    "--close-pair-max-mag-delta",
+    type=float,
+    default=0.5,
+    show_default=True,
+    help="Maximum apparent-magnitude difference for close Gaia/HIP pair detection.",
+)
 def quality_report(
     project_path: Path,
     force: bool,
     distance_disagreement_threshold: float,
     ruwe_threshold: float,
+    include_close_pairs: bool,
+    close_pair_max_sep_arcsec: float,
+    close_pair_max_mag_delta: float,
 ) -> None:
     """Audit merged output for suspicious non-overridden stars."""
     project = _load_project_or_die(
@@ -106,17 +140,23 @@ def quality_report(
         "overrides",
         "identifiers",
     )
-    report = run_quality_report(
-        gaia_dir=project.gaia.output_dir,
-        hip_path=project.hip.output_parquet,
-        crossmatch_path=project.gaia_to_hip.output_parquet,
-        overrides_path=project.overrides.output_parquet,
-        merge_dir=project.merge.output_dir,
-        identifiers_path=project.identifiers.output_parquet,
-        distance_disagreement_threshold=distance_disagreement_threshold,
-        ruwe_threshold=ruwe_threshold,
-        force=force,
-    )
+    try:
+        report = run_quality_report(
+            gaia_dir=project.gaia.output_dir,
+            hip_path=project.hip.output_parquet,
+            crossmatch_path=project.gaia_to_hip.output_parquet,
+            overrides_path=project.overrides.output_parquet,
+            merge_dir=project.merge.output_dir,
+            identifiers_path=project.identifiers.output_parquet,
+            distance_disagreement_threshold=distance_disagreement_threshold,
+            ruwe_threshold=ruwe_threshold,
+            include_close_pairs=include_close_pairs,
+            close_pair_max_sep_arcsec=close_pair_max_sep_arcsec,
+            close_pair_max_mag_delta=close_pair_max_mag_delta,
+            force=force,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
     report_path = project.merge.output_dir / "merge_quality_report.json"
     click.echo(f"Quality report: {report_path.resolve()}")
     click.echo(f"Quality issues: {Path(report.issues_path).resolve()}")
@@ -124,5 +164,6 @@ def quality_report(
         "Summary: "
         f"issues={report.total_issues:,}, "
         f"matched_pair={report.matched_pair_issues:,}, "
-        f"merged_row={report.merged_row_issues:,}"
+        f"merged_row={report.merged_row_issues:,}, "
+        f"close_pair={report.close_pair_issues:,}"
     )

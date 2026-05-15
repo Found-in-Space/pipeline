@@ -29,6 +29,7 @@ class LazyGroup(click.Group):
         "identifiers": "foundinspace.pipeline.identifiers.cli:cli",
         "merge": "foundinspace.pipeline.merge.cli:cli",
         "overrides": "foundinspace.pipeline.overrides.cli:cli",
+        "audit": "foundinspace.pipeline.audit.cli:cli",
     },
 )
 def cli():

@@ -12,6 +12,7 @@ DECISION_COLS = [
     "hip_source_id",
     "winner_catalog",
     "winner_source_id",
+    "mapping_source",
     "gaia_score",
     "hip_score",
     "tie_break_reason",

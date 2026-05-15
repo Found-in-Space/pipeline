@@ -48,12 +48,34 @@ uv run fis-pipeline overrides build --project project.toml [--force]
 ## Merge
 
 ```bash
-uv run fis-pipeline merge build --project project.toml [--force]
+uv run fis-pipeline merge build --project project.toml \
+  [--crossmatch-path PATH] [--force]
 uv run fis-pipeline merge quality-report --project project.toml [--force]
+uv run --group audit fis-pipeline merge quality-report --project project.toml \
+  --include-close-pairs [--force]
 ```
 
 Writes HEALPix-partitioned Parquet under `[merge] output_dir/healpix/`,
 merge-aligned sidecars under `[merge] sidecar_output_dir`, plus
 `merge_report.json` and `merge_decisions.parquet`. The quality-report command
 adds `merge_quality_report.json` and `merge_quality_issues.parquet`, flagging
-suspicious non-overridden rows for review.
+suspicious non-overridden rows for review. With `--include-close-pairs`, it
+also uses the optional audit dependencies to flag likely unresolved Gaia/HIP
+duplicates that are close on the sky, similar in apparent magnitude, and absent
+from the exact Gaia-HIP crossmatch.
+
+## Audit
+
+```bash
+uv run --group audit fis-pipeline audit match --project project.toml [--force]
+uv run --group audit fis-pipeline audit report --project project.toml [--force]
+```
+
+The audit match command writes local close-pair evidence, distance-threshold
+histogram diagnostics, distance-vs-astrometry-quality plots, and supplemental
+and combined Gaia/HIP crossmatch maps under `[merge] output_dir/audit`. The
+report command writes octree review sidecars and manual override candidate
+reports after a merge has been built. Automatic supplemental matches are
+conservative: clean one-to-one pairs are accepted when they meet the tight
+sky/magnitude thresholds or their distances agree within the default 10%
+threshold.

@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from foundinspace.pipeline.constants import OUTPUT_COLS
 from foundinspace.pipeline.merge.quality_report import run_quality_report
@@ -29,6 +30,8 @@ def _row(
     astrometry_quality: float,
     photometry_quality: float = 0.1,
     teff: float = 5000.0,
+    ra_deg: float = 0.0,
+    dec_deg: float = 0.0,
 ) -> dict:
     return {
         "source": source,
@@ -36,8 +39,8 @@ def _row(
         "x_icrs_pc": r_pc,
         "y_icrs_pc": 0.0,
         "z_icrs_pc": 0.0,
-        "ra_deg": 0.0,
-        "dec_deg": 0.0,
+        "ra_deg": ra_deg,
+        "dec_deg": dec_deg,
         "r_pc": r_pc,
         "mag_abs": mag_abs,
         "teff": teff,
@@ -244,8 +247,120 @@ def test_quality_report_flags_suspicious_non_overridden_rows(tmp_path: Path):
     }
     assert "302" not in set(issues["source_id"].astype(str))
     assert set(issues["label"]) == {"Test Pair", "Extreme Star"}
+    extreme = issues.loc[issues["issue_type"].eq("merged_row_extreme")].iloc[0]
+    assert extreme["merged_ra_deg"] == 0.0
+    assert extreme["merged_dec_deg"] == 0.0
 
     report_json = json.loads(
         (merge_dir / "merge_quality_report.json").read_text(encoding="utf-8")
     )
     assert report_json["total_issues"] == 2
+
+
+def test_quality_report_can_flag_close_cross_catalog_pairs(tmp_path: Path):
+    pytest.importorskip("scipy")
+
+    gaia_dir = tmp_path / "gaia"
+    hip_path = tmp_path / "hip.parquet"
+    crossmatch_path = tmp_path / "gaia_hip.parquet"
+    overrides_path = tmp_path / "overrides.parquet"
+    merge_dir = tmp_path / "merged"
+
+    _write_parquet(pd.DataFrame(columns=OUTPUT_COLS), gaia_dir / "b1.parquet")
+    _write_parquet(pd.DataFrame(columns=[*OUTPUT_COLS, "Sn", "Hpmag"]), hip_path)
+    _write_parquet(
+        pd.DataFrame(
+            [{"gaia_source_id": "300", "hip_source_id": "400"}],
+            columns=["gaia_source_id", "hip_source_id"],
+        ),
+        crossmatch_path,
+    )
+    _write_parquet(
+        pd.DataFrame(
+            columns=[
+                *OUTPUT_COLS,
+                "override_id",
+                "action",
+                "override_reason",
+                "override_policy_version",
+            ]
+        ),
+        overrides_path,
+    )
+    _write_parquet(pd.DataFrame(), merge_dir / "merge_decisions.parquet")
+
+    _write_parquet(
+        pd.DataFrame(
+            [
+                _row(
+                    source="gaia",
+                    source_id="100",
+                    r_pc=100.0,
+                    mag_abs=4.0,
+                    astrometry_quality=0.05,
+                    ra_deg=10.0,
+                    dec_deg=20.0,
+                ),
+                _row(
+                    source="hip",
+                    source_id="200",
+                    r_pc=100.0,
+                    mag_abs=4.1,
+                    astrometry_quality=0.05,
+                    ra_deg=10.0001,
+                    dec_deg=20.0,
+                ),
+                _row(
+                    source="hip",
+                    source_id="201",
+                    r_pc=100.0,
+                    mag_abs=8.0,
+                    astrometry_quality=0.05,
+                    ra_deg=10.0001,
+                    dec_deg=20.0,
+                ),
+                _row(
+                    source="gaia",
+                    source_id="300",
+                    r_pc=100.0,
+                    mag_abs=5.0,
+                    astrometry_quality=0.05,
+                    ra_deg=11.0,
+                    dec_deg=21.0,
+                ),
+                _row(
+                    source="hip",
+                    source_id="400",
+                    r_pc=100.0,
+                    mag_abs=5.05,
+                    astrometry_quality=0.05,
+                    ra_deg=11.0,
+                    dec_deg=21.0,
+                ),
+            ],
+            columns=OUTPUT_COLS,
+        ),
+        merge_dir / "healpix" / "0" / "part.parquet",
+    )
+
+    report = run_quality_report(
+        gaia_dir=gaia_dir,
+        hip_path=hip_path,
+        crossmatch_path=crossmatch_path,
+        overrides_path=overrides_path,
+        merge_dir=merge_dir,
+        include_close_pairs=True,
+        close_pair_max_sep_arcsec=1.0,
+        close_pair_max_mag_delta=0.25,
+        force=True,
+    )
+
+    assert report.close_pair_issues == 1
+    issues = pd.read_parquet(merge_dir / "merge_quality_issues.parquet")
+    close_pairs = issues[issues["issue_type"].eq("close_cross_catalog_pair")]
+    assert len(close_pairs) == 1
+    row = close_pairs.iloc[0]
+    assert row["gaia_source_id"] == "100"
+    assert row["hip_source_id"] == "200"
+    assert row["apparent_mag_delta"] == pytest.approx(0.1)
+    assert "300" not in set(close_pairs["gaia_source_id"])

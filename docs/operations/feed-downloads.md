@@ -103,8 +103,26 @@ Run the post-merge quality audit to surface suspicious non-overridden stars:
 uv run fis-pipeline merge quality-report --project project.toml
 ```
 
+For bright-star inspection runs, include the optional close Gaia/HIP duplicate
+scan:
+
+```bash
+uv run --group audit fis-pipeline merge quality-report --project project.toml \
+  --include-close-pairs --force
+```
+
 This writes `merge_quality_report.json` and `merge_quality_issues.parquet` under
 `[merge] output_dir`.
+
+To clean obvious local Gaia/HIP duplicates before a review merge, build the
+audit match artifacts and rerun merge with the combined map:
+
+```bash
+uv run --group audit fis-pipeline audit match --project project.toml --force
+uv run fis-pipeline merge build --project project.toml \
+  --crossmatch-path data/processed/merged/audit/combined_gaia_hip_map.parquet --force
+uv run --group audit fis-pipeline audit report --project project.toml --force
+```
 
 ## Useful Checks
 

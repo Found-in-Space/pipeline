@@ -30,5 +30,6 @@ Each stage has a short ownership page:
 - [Identifiers](stages/identifiers.md)
 - [Overrides](stages/overrides.md)
 - [Merge](stages/merge.md)
+- [Audit](stages/audit.md)
 
 For command details, see [reference/cli.md](reference/cli.md).

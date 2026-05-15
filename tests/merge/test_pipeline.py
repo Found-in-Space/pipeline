@@ -283,6 +283,9 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
         ]
     )
     _write_parquet(overrides_df, overrides_path)
+    audit_marker = output_dir / "audit" / "keep.txt"
+    audit_marker.parent.mkdir(parents=True)
+    audit_marker.write_text("keep", encoding="utf-8")
 
     report = run_merge(
         gaia_dir=gaia_dir,
@@ -327,10 +330,13 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
     assert report.override_drop_applied == 0
     assert report.override_no_effect == 1
     assert report.rows_emitted_total == 7
+    assert audit_marker.read_text(encoding="utf-8") == "keep"
 
     decisions_df = pd.read_parquet(output_dir / "merge_decisions.parquet")
     assert len(decisions_df) >= 5
     assert "override_no_effect" in set(decisions_df["decision_type"].astype(str))
+    score_decisions = decisions_df[decisions_df["decision_type"].astype(str) == "score"]
+    assert set(score_decisions["mapping_source"].astype(str)) == {"test"}
 
     report_json = json.loads(
         (output_dir / "merge_report.json").read_text(encoding="utf-8")
