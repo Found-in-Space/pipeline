@@ -17,7 +17,8 @@ SELECT
   source_id,
   original_ext_source_id,
   angular_distance,
-  number_of_neighbours
+  number_of_neighbours,
+  xm_flag
 FROM gaiadr3.hipparcos2_best_neighbour
 """
 

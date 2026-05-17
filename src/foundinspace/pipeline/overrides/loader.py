@@ -1,8 +1,8 @@
-"""Load manual override source files from the overrides data package."""
+"""Load manual override source files from explicit include files."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -10,8 +10,12 @@ import numpy as np
 import yaml
 
 _YAML_SUFFIXES = (".yaml", ".yml")
+_BUILTIN_PREFIX = "builtin:"
+_BUILTIN_FILES = {"sun.yaml"}
 
-# Packaged default: sibling `data/` next to this module (editable + wheel with packaged YAML).
+OverrideInclude = str | Path
+
+# Packaged builtins: sibling `data/` next to this module.
 _PACKAGE_DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
@@ -28,32 +32,63 @@ def icrs_spherical_to_cartesian_pc(
     return float(x), float(y), float(z)
 
 
-def _sorted_yaml_paths(paths: Iterable[Path]) -> Iterator[Path]:
-    """Yield YAML paths in deterministic name order."""
-    yield from sorted(
-        (p for p in paths if p.is_file() and p.suffix.lower() in _YAML_SUFFIXES),
-        key=lambda p: p.name,
-    )
+def _validate_yaml_file(path: Path) -> Path:
+    if path.suffix.lower() not in _YAML_SUFFIXES:
+        raise ValueError(f"Override include must be a YAML file: {path}")
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing override include file: {path}")
+    return path
 
 
-def _default_data_dir() -> Path:
-    return _PACKAGE_DATA_DIR
+def _resolve_builtin_include(value: str) -> Path:
+    name = value.removeprefix(_BUILTIN_PREFIX).strip()
+    if name not in _BUILTIN_FILES:
+        supported = ", ".join(f"{_BUILTIN_PREFIX}{n}" for n in sorted(_BUILTIN_FILES))
+        raise ValueError(
+            f"Unknown builtin override include {value!r}; supported: {supported}"
+        )
+    return _validate_yaml_file(_PACKAGE_DATA_DIR / name)
 
 
-def iter_override_source_files(data_dir: Path | None = None) -> list[Path]:
-    """Return all override YAML files in deterministic order.
+def _resolve_override_include(include: OverrideInclude) -> Path:
+    if isinstance(include, Path):
+        return _validate_yaml_file(include.expanduser())
+    if isinstance(include, str):
+        value = include.strip()
+        if not value:
+            raise ValueError("Override include file must be a non-empty string")
+        if value.startswith(_BUILTIN_PREFIX):
+            return _resolve_builtin_include(value)
+        if "$" in value:
+            raise ValueError(
+                f"Override include path must not contain environment-variable syntax: {value!r}"
+            )
+        return _validate_yaml_file(Path(value).expanduser())
+    raise TypeError(f"Override include must be str or Path, got {type(include)}")
 
-    If `data_dir` is provided, files are scanned from that filesystem path.
-    Otherwise, the package `data` directory next to this module is used.
-    """
-    root = data_dir if data_dir is not None else _default_data_dir()
-    return list(_sorted_yaml_paths(root.iterdir()))
+
+def iter_override_source_files(include_files: Sequence[OverrideInclude]) -> list[Path]:
+    """Return explicitly listed override YAML files in include order."""
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for include in include_files:
+        path = _resolve_override_include(include)
+        key = path.resolve()
+        if key in seen:
+            raise ValueError(f"Duplicate override include file: {path}")
+        seen.add(key)
+        out.append(path)
+    return out
 
 
-def load_override_source_texts(data_dir: Path | None = None) -> dict[str, str]:
+def load_override_source_texts(
+    include_files: Sequence[OverrideInclude],
+) -> dict[str, str]:
     """Load all override YAML files as text keyed by filename."""
     out: dict[str, str] = {}
-    for path in iter_override_source_files(data_dir=data_dir):
+    for path in iter_override_source_files(include_files):
+        if path.name in out:
+            raise ValueError(f"Duplicate override source filename: {path.name}")
         out[path.name] = path.read_text(encoding="utf-8")
     return out
 
@@ -114,11 +149,11 @@ def _normalize_star_dict(star: MutableMapping[str, Any]) -> None:
 
 
 def load_parsed_override_documents(
-    data_dir: Path | None = None,
+    include_files: Sequence[OverrideInclude],
 ) -> list[dict[str, Any]]:
     """Load and parse every YAML file as a document dict (may contain `description`, `stars`)."""
     docs: list[dict[str, Any]] = []
-    for path in iter_override_source_files(data_dir=data_dir):
+    for path in iter_override_source_files(include_files):
         raw = _parse_yaml_file(path)
         if raw is None:
             continue
@@ -131,7 +166,7 @@ def load_parsed_override_documents(
 
 
 def load_normalized_override_stars(
-    data_dir: Path | None = None,
+    include_files: Sequence[OverrideInclude],
 ) -> list[dict[str, Any]]:
     """Load all stars from all YAML files, with Cartesian coordinates filled when omitted.
 
@@ -139,7 +174,7 @@ def load_normalized_override_stars(
     plus ``_source_file`` and ``_file_description`` (if the file had ``description``).
     """
     out: list[dict[str, Any]] = []
-    for path in iter_override_source_files(data_dir=data_dir):
+    for path in iter_override_source_files(include_files):
         raw = _parse_yaml_file(path)
         if raw is None:
             continue

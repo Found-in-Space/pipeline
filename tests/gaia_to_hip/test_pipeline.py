@@ -58,12 +58,13 @@ def test_prepare_gaia_hip_mapping_writes_parquet(tmp_path: Path):
     ecsv = tmp_path / "cross.ecsv"
     out_parquet = tmp_path / "map.parquet"
     t = Table(
-        rows=[[100, 42, 0.005, 1], [200, 99, 0.010, 2]],
+        rows=[[100, 42, 0.005, 1, 8], [200, 99, 0.010, 2, 68]],
         names=(
             "source_id",
             "original_ext_source_id",
             "angular_distance",
             "number_of_neighbours",
+            "xm_flag",
         ),
     )
     t.write(ecsv, format="ascii.ecsv", overwrite=True)
@@ -79,6 +80,7 @@ def test_prepare_gaia_hip_mapping_writes_parquet(tmp_path: Path):
     assert read_back["angular_distance"].tolist() == pytest.approx(
         [0.005, 0.010], abs=1e-6
     )
+    assert read_back["xm_flag"].tolist() == [8, 68]
 
 
 def test_prepare_gaia_hip_mapping_raises_when_output_exists(tmp_path: Path):

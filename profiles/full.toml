@@ -11,7 +11,7 @@ access = "authenticated"
 state_db = "data/processed/gaia-download.sqlite"
 row_cap = 55000000
 max_active_jobs = 4
-carry_field_sets = ["motion", "mass"]
+carry_field_sets = ["motion", "mass", "quality"]
 
 [gaia-to-hip]
 download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"
@@ -29,7 +29,7 @@ output_parquet = "data/processed/identifiers_map.parquet"
 
 [overrides]
 output_parquet = "data/processed/overrides.parquet"
-# data_dir = "path/to/overrides"
+include_files = ["builtin:sun.yaml"]
 
 [merge]
 output_dir = "data/processed/merged"

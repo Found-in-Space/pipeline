@@ -66,6 +66,26 @@ def test_download_query_can_omit_healpix_filter_for_browser_export() -> None:
     assert "g.ref_epoch AS ref_epoch" in query
 
 
+def test_quality_field_set_carries_gaia_qc_diagnostics() -> None:
+    fields = load_gaia_field_sets(("quality",))
+
+    names = {field.name for field in fields}
+    assert "ruwe" in names
+    assert "astrometric_params_solved" in names
+    assert "ipd_gof_harmonic_amplitude" in names
+    assert "phot_variable_flag" in names
+    assert "quality" in fields_by_sidecar(fields)
+    assert "gaia_astrometric_params_solved" in gaia_enrichment_columns(fields)
+
+    spec = GaiaQuerySpec(mode="full", mag_limit=None, carry_fields=fields)
+    query = build_download_query(spec, hp3_values=(1,))
+
+    assert "g.astrometric_params_solved AS astrometric_params_solved" in query
+    assert "g.ipd_gof_harmonic_amplitude AS ipd_gof_harmonic_amplitude" in query
+    assert "g.phot_variable_flag AS phot_variable_flag" in query
+    assert "astrophysical_parameters_supp" not in query
+
+
 def test_count_query_uses_same_source_filter_without_enrichment_joins() -> None:
     spec = GaiaQuerySpec(
         mode="small",

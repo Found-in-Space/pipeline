@@ -35,11 +35,11 @@ def _crossmatch_parquet(project) -> Path | None:
     return cm
 
 
-def _overrides_data_dir(project) -> Path | None:
-    """Read data_dir from [overrides] if the section and key exist."""
+def _overrides_include_files(project):
+    """Read explicit override include files from [overrides] when configured."""
     if not project.overrides.is_configured:
-        return None
-    return project.overrides.data_dir
+        return ()
+    return project.overrides.include_files
 
 
 @cli.command(name="build")
@@ -68,7 +68,7 @@ def build(
         outputs["iv27a_proper_names"],
         project.identifiers.output_parquet,
         crossmatch_parquet=_crossmatch_parquet(project),
-        overrides_data_dir=_overrides_data_dir(project),
+        overrides_include_files=_overrides_include_files(project),
         overwrite=force,
     )
     click.echo(f"Wrote wide identifier sidecar to {out.resolve()}")

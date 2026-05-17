@@ -35,7 +35,7 @@ def build(project_path: Path, force: bool) -> None:
     project = _load_project_or_die(project_path, "overrides")
     out = prepare_overrides_parquet(
         project.overrides.output_parquet,
-        data_dir=project.overrides.data_dir,
+        include_files=project.overrides.include_files,
         overwrite=force,
     )
     click.echo(f"Wrote overrides table to {out.resolve()}")

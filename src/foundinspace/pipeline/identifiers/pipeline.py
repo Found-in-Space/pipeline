@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +14,7 @@ from astropy.table import Table
 from foundinspace.pipeline.common.ids import coerce_positive_int_series
 from foundinspace.pipeline.identifiers import schema
 from foundinspace.pipeline.overrides.identifiers import build_override_identifier_rows
+from foundinspace.pipeline.overrides.loader import OverrideInclude
 
 # Internal Vizier merge uses these working column names before reshaping.
 _VIZIER_WORK_COLS = ["hip_source_id", "hd", "bayer", "fl", "cst", "proper_name"]
@@ -215,7 +217,7 @@ def prepare_identifiers_sidecar(
     output_path: Path,
     *,
     crossmatch_parquet: Path | None = None,
-    overrides_data_dir: Path | None = None,
+    overrides_include_files: Sequence[OverrideInclude] = (),
     overwrite: bool = False,
 ) -> Path:
     output_path = Path(output_path).expanduser()
@@ -247,7 +249,7 @@ def prepare_identifiers_sidecar(
         mapped = hip_ids.map(hip_to_gaia)
         vizier_df["gaia_source_id"] = mapped.astype("Int64")
 
-    override_df = build_override_identifier_rows(overrides_data_dir)
+    override_df = build_override_identifier_rows(overrides_include_files)
 
     if vizier_df.empty and override_df.empty:
         combined = schema.empty_identifier_frame()

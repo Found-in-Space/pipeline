@@ -57,8 +57,9 @@ Build manual override rows:
 uv run fis-pipeline overrides build --project project.toml
 ```
 
-By default this uses packaged curated YAML files. Set `[overrides].data_dir` in
-the project file only when working with a separate local override directory.
+The project must list every override source in `[overrides].include_files`.
+Use `builtin:sun.yaml` for the packaged Sun override and versioned catalog
+paths for any additional curated override publications.
 
 ## 5. Gaia
 

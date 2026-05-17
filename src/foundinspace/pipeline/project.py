@@ -39,9 +39,10 @@ _IDENTIFIERS_KEYS = {
     "iv27a_proper_names_ecsv",
     "output_parquet",
 }
-_OVERRIDES_KEYS = {"output_parquet", "data_dir"}
+_OVERRIDES_KEYS = {"output_parquet", "include_files"}
 _MERGE_KEYS = {"output_dir", "healpix_order", "sidecar_output_dir"}
 _DIST_NAME = "found-in-space-pipeline"
+_OVERRIDES_BUILTIN_PREFIX = "builtin:"
 
 GAIA_DOWNLOAD_MODES = ("small", "full")
 GAIA_DOWNLOAD_ACCESS_MODES = ("auto", "anonymous", "authenticated")
@@ -71,6 +72,18 @@ def _resolve_path(project_dir: Path, value: str, *, field_name: str) -> Path:
     if raw_path.is_absolute():
         return raw_path
     return project_dir / raw_path
+
+
+def _resolve_override_include(
+    project_dir: Path,
+    value: str,
+    *,
+    field_name: str,
+) -> str | Path:
+    _reject_env_expansion(value, field_name=field_name)
+    if value.startswith(_OVERRIDES_BUILTIN_PREFIX):
+        return value
+    return _resolve_path(project_dir, value, field_name=field_name)
 
 
 def _require_str(raw: dict[str, Any], key: str, *, field_name: str) -> str:
@@ -204,6 +217,13 @@ class _SectionAccessor:
             out.append(normalized)
         return tuple(out)
 
+    def _require_str_list(self, key: str) -> tuple[str, ...]:
+        if self._raw is None:
+            raise ValueError(f"Missing [{self._section}] table in project file")
+        if key not in self._raw:
+            raise ValueError(f"{self._section}.{key} must be a list of strings")
+        return self._optional_str_list(key, ())
+
 
 class GaiaConfig(_SectionAccessor):
     @property
@@ -313,8 +333,16 @@ class OverridesConfig(_SectionAccessor):
         return self._require_path("output_parquet")
 
     @property
-    def data_dir(self) -> Path | None:
-        return self._optional_path("data_dir")
+    def include_files(self) -> tuple[str | Path, ...]:
+        values = self._require_str_list("include_files")
+        return tuple(
+            _resolve_override_include(
+                self._project_dir,
+                value,
+                field_name="overrides.include_files",
+            )
+            for value in values
+        )
 
 
 class MergeConfig(_SectionAccessor):

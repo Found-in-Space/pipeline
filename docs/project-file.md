@@ -19,7 +19,7 @@ directory. Environment-variable syntax is rejected so runs are reproducible.
 - `[hip]`: `download_ecsv`, `output_parquet`.
 - `[identifiers]`: `hip_hd_ecsv`, `iv27a_catalog_ecsv`,
   `iv27a_proper_names_ecsv`, `output_parquet`.
-- `[overrides]`: `output_parquet`, optional `data_dir`.
+- `[overrides]`: `output_parquet`, `include_files`.
 - `[merge]`: `output_dir`, `healpix_order`, optional `sidecar_output_dir`.
 
 Only the sections needed by a command must be present. Missing sections fail

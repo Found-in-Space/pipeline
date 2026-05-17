@@ -18,6 +18,7 @@ GAIA_HIP_MAP_COLS = [
     "mapping_source",
     "number_of_neighbours",
     "angular_distance",
+    "xm_flag",
 ]
 MAPPING_SOURCE_HIPPARCOS2_BEST_NEIGHBOUR = "hipparcos2_best_neighbour"
 
@@ -31,6 +32,7 @@ def empty_gaia_hip_mapping() -> pd.DataFrame:
             "mapping_source": pd.Series(dtype="object"),
             "number_of_neighbours": pd.Series(dtype=np.int16),
             "angular_distance": pd.Series(dtype=np.float32),
+            "xm_flag": pd.Series(dtype=np.int16),
         }
     )
 
@@ -66,6 +68,7 @@ def build_gaia_hip_mapping_from_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     n_neigh_col = "number_of_neighbours"
     ang_dist_col = "angular_distance"
+    xm_flag_col = "xm_flag"
     if n_neigh_col in df.columns:
         out[n_neigh_col] = (
             pd.to_numeric(df.loc[valid, n_neigh_col].values, errors="coerce")
@@ -80,6 +83,14 @@ def build_gaia_hip_mapping_from_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         ).astype(np.float32)
     else:
         out[ang_dist_col] = np.float32(np.nan)
+    if xm_flag_col in df.columns:
+        out[xm_flag_col] = (
+            pd.to_numeric(df.loc[valid, xm_flag_col].values, errors="coerce")
+            .astype(np.float32)
+            .astype(np.int16)
+        )
+    else:
+        out[xm_flag_col] = np.int16(0)
 
     out = out.drop_duplicates(subset=["gaia_source_id", "hip_source_id"])
     return out.sort_values(

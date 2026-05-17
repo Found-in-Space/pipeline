@@ -33,7 +33,7 @@ MERGE_BATCH_SIZE = 1_000_000
 # Auxiliary columns expected from widened catalog pipelines (gracefully absent).
 _GAIA_AUX_COLS = ["ruwe", "phot_g_mean_mag"]
 _HIP_AUX_COLS = ["Sn", "Hpmag"]
-_CROSS_AUX_COLS = ["number_of_neighbours", "angular_distance"]
+_CROSS_AUX_COLS = ["number_of_neighbours", "angular_distance", "xm_flag"]
 _CROSS_MAPPING_SOURCE_COL = "mapping_source"
 
 
@@ -55,6 +55,7 @@ class MergeReport:
     matched_pairs_scored: int
     matched_winner_gaia: int
     matched_winner_hip: int
+    hip_with_missing_gaia_partner: int
     override_add_applied: int
     override_replace_applied: int
     override_drop_applied: int
@@ -210,6 +211,7 @@ def run_merge(
             "mapping_source": rec.mapping_source,
             "number_of_neighbours": policy._safe_int(rec.number_of_neighbours),
             "angular_distance": policy._safe_float(rec.angular_distance),
+            "xm_flag": policy._safe_int(rec.xm_flag),
         }
 
     overrides_df = _read_required_parquet(overrides_path, OVERRIDE_REQUIRED_COLS)
@@ -248,6 +250,7 @@ def run_merge(
         matched_pairs_scored=0,
         matched_winner_gaia=0,
         matched_winner_hip=0,
+        hip_with_missing_gaia_partner=0,
         override_add_applied=0,
         override_replace_applied=0,
         override_drop_applied=0,
@@ -373,6 +376,11 @@ def run_merge(
 
                     if hip_id is None:
                         note = "partner_missing"
+                    _n = cross_aux.get("number_of_neighbours")
+                    _ang = policy._safe_float(
+                        cross_aux.get("angular_distance", math.nan)
+                    )
+                    _xm = cross_aux.get("xm_flag")
                     decisions.append(
                         decision_record(
                             decision_type="override",
@@ -395,6 +403,11 @@ def run_merge(
                             override_policy_version=override.get(
                                 "override_policy_version", pd.NA
                             ),
+                            number_of_neighbours=_n if _n is not None else pd.NA,
+                            angular_distance_arcsec=_ang
+                            if math.isfinite(_ang)
+                            else pd.NA,
+                            crossmatch_xm_flag=_xm if _xm is not None else pd.NA,
                             note=note or pd.NA,
                         )
                     )
@@ -436,6 +449,7 @@ def run_merge(
                 _sn = policy._safe_int(hip_rec.get("Sn"))
                 _hmag = policy._safe_float(hip_rec.get("Hpmag"))
                 _ang = policy._safe_float(cross_aux.get("angular_distance", math.nan))
+                _xm = cross_aux.get("xm_flag")
                 decisions.append(
                     decision_record(
                         decision_type="score",
@@ -455,6 +469,7 @@ def run_merge(
                         if n_neighbours is not None
                         else pd.NA,
                         angular_distance_arcsec=_ang if math.isfinite(_ang) else pd.NA,
+                        crossmatch_xm_flag=_xm if _xm is not None else pd.NA,
                         gaia_ruwe=_ruwe if math.isfinite(_ruwe) else pd.NA,
                         gaia_phot_g_mean_mag=_gmag if math.isfinite(_gmag) else pd.NA,
                         hip_solution_type=_sn if _sn is not None else pd.NA,
@@ -524,6 +539,11 @@ def run_merge(
                 raise ValueError(
                     f"Unsupported override action for HIP flush path: {action}"
                 )
+            _ang = policy._safe_float(cross_aux.get("angular_distance", math.nan))
+            _n = cross_aux.get("number_of_neighbours")
+            _xm = cross_aux.get("xm_flag")
+            _sn = policy._safe_int(hip_rec.get("Sn"))
+            _hmag = policy._safe_float(hip_rec.get("Hpmag"))
             decisions.append(
                 decision_record(
                     decision_type="override",
@@ -541,6 +561,11 @@ def run_merge(
                     override_policy_version=override.get(
                         "override_policy_version", pd.NA
                     ),
+                    number_of_neighbours=_n if _n is not None else pd.NA,
+                    angular_distance_arcsec=_ang if math.isfinite(_ang) else pd.NA,
+                    crossmatch_xm_flag=_xm if _xm is not None else pd.NA,
+                    hip_solution_type=_sn if _sn is not None else pd.NA,
+                    hip_apparent_mag=_hmag if math.isfinite(_hmag) else pd.NA,
                     note="resolved_in_hip_flush"
                     if gaia_id is not None
                     and ("gaia", gaia_id)
@@ -549,6 +574,32 @@ def run_merge(
                 )
             )
             continue
+
+        cross_aux = cross_aux_by_gaia.get(gaia_id, {}) if gaia_id is not None else {}
+        _sn = policy._safe_int(hip_rec.get("Sn"))
+        _hmag = policy._safe_float(hip_rec.get("Hpmag"))
+        if gaia_id is not None:
+            _ang = policy._safe_float(cross_aux.get("angular_distance", math.nan))
+            _n = cross_aux.get("number_of_neighbours")
+            _xm = cross_aux.get("xm_flag")
+            report.hip_with_missing_gaia_partner += 1
+            decisions.append(
+                decision_record(
+                    decision_type="missing_gaia_partner",
+                    gaia_source_id=str(gaia_id),
+                    hip_source_id=str(hip_id),
+                    winner_catalog="hip",
+                    winner_source_id=str(hip_id),
+                    mapping_source=cross_aux.get("mapping_source", pd.NA),
+                    hip_score=policy._safe_score(hip_rec.get("astrometry_quality")),
+                    note="gaia_partner_absent_from_gaia_stage",
+                    number_of_neighbours=_n if _n is not None else pd.NA,
+                    angular_distance_arcsec=_ang if math.isfinite(_ang) else pd.NA,
+                    crossmatch_xm_flag=_xm if _xm is not None else pd.NA,
+                    hip_solution_type=_sn if _sn is not None else pd.NA,
+                    hip_apparent_mag=_hmag if math.isfinite(_hmag) else pd.NA,
+                )
+            )
 
         hip_out_rows.append(_output_row(hip_rec))
         report.unmatched_hip += 1

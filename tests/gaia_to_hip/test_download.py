@@ -15,14 +15,15 @@ def test_fetch_uses_async_job_and_writes_ecsv(tmp_path: Path, monkeypatch):
         def get_results(self):
             return Table(
                 rows=[
-                    [1, 11, 0.01, 1],
-                    [2, 22, 0.02, 1],
+                    [1, 11, 0.01, 1, 8],
+                    [2, 22, 0.02, 1, 12],
                 ],
                 names=(
                     "source_id",
                     "original_ext_source_id",
                     "angular_distance",
                     "number_of_neighbours",
+                    "xm_flag",
                 ),
             )
 
@@ -46,6 +47,7 @@ def test_fetch_uses_async_job_and_writes_ecsv(tmp_path: Path, monkeypatch):
     table = Table.read(output, format="ascii.ecsv")
     assert len(table) == 2
     assert "FROM gaiadr3.hipparcos2_best_neighbour" in captured["query"]
+    assert "xm_flag" in captured["query"]
 
 
 def test_launch_uses_credentials_file_when_available(monkeypatch):

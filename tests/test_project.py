@@ -39,6 +39,7 @@ output_parquet = "data/processed/identifiers_map.parquet"
 
 [overrides]
 output_parquet = "data/processed/overrides.parquet"
+include_files = ["builtin:sun.yaml"]
 
 [merge]
 output_dir = "data/processed/merged"
@@ -72,6 +73,7 @@ def test_load_project_resolves_relative_paths_from_project_file_dir(
     )
     assert project.merge.healpix_order == 3
     assert project.merge.output_dir == project_dir / "data" / "processed" / "merged"
+    assert project.overrides.include_files == ("builtin:sun.yaml",)
 
 
 def test_load_project_rejects_env_style_path_strings(tmp_path: Path) -> None:
@@ -101,6 +103,52 @@ def test_load_project_rejects_unknown_keys_in_section(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match=r"Unknown key\(s\) in \[gaia\]"):
         load_project(project_path)
+
+
+def test_load_project_rejects_legacy_overrides_data_dir(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text().replace(
+            'include_files = ["builtin:sun.yaml"]\n',
+            'data_dir = "data/overrides"\n',
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"Unknown key\(s\) in \[overrides\]"):
+        load_project(project_path)
+
+
+def test_load_project_resolves_override_include_paths(tmp_path: Path) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text().replace(
+            'include_files = ["builtin:sun.yaml"]',
+            'include_files = ["builtin:sun.yaml", "catalog/alpha_cen.yaml"]',
+        ),
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    assert project.overrides.include_files == (
+        "builtin:sun.yaml",
+        tmp_path / "catalog" / "alpha_cen.yaml",
+    )
+
+
+def test_load_project_requires_override_include_files_on_access(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text().replace('include_files = ["builtin:sun.yaml"]\n', ""),
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+    with pytest.raises(ValueError, match="overrides.include_files"):
+        _ = project.overrides.include_files
 
 
 def test_load_project_gaia_mag_limit_reads_optional_number(tmp_path: Path) -> None:
@@ -249,13 +297,16 @@ def test_load_project_optional_section_absent_returns_none_on_optional_fields(
     project_path = tmp_path / "project.toml"
     text = _project_text()
     without_overrides = text.replace(
-        '[overrides]\noutput_parquet = "data/processed/overrides.parquet"\n\n',
+        (
+            '[overrides]\n'
+            'output_parquet = "data/processed/overrides.parquet"\n'
+            'include_files = ["builtin:sun.yaml"]\n\n'
+        ),
         "",
     )
     project_path.write_text(without_overrides, encoding="utf-8")
 
     project = load_project(project_path)
-    assert project.overrides.data_dir is None
     with pytest.raises(ValueError, match=r"Missing \[overrides\] table"):
         _ = project.overrides.output_parquet
 
@@ -372,6 +423,7 @@ def test_render_project_template_is_valid_toml_with_all_sections() -> None:
     assert "output_parquet" in parsed["identifiers"]
 
     assert "output_parquet" in parsed["overrides"]
+    assert parsed["overrides"]["include_files"] == ["builtin:sun.yaml"]
 
     assert "output_dir" in parsed["merge"]
     assert parsed["merge"]["healpix_order"] == 3

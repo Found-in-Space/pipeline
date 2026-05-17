@@ -124,7 +124,7 @@ def test_prepare_identifiers_sidecar_writes_compound_key_and_gaia_ids(tmp_path: 
         proper_path,
         output_path,
         crossmatch_parquet=cross_path,
-        overrides_data_dir=None,
+        overrides_include_files=(),
         overwrite=False,
     )
     assert out == output_path
@@ -180,7 +180,7 @@ def test_prepare_identifiers_merges_override_yaml_identifiers(tmp_path: Path):
         proper_path,
         output_path,
         crossmatch_parquet=None,
-        overrides_data_dir=ov_dir,
+        overrides_include_files=[ov_dir / "extra.yaml"],
         overwrite=False,
     )
     assert out == output_path

@@ -252,3 +252,110 @@ def test_quality_report_flags_suspicious_non_overridden_rows(tmp_path: Path):
         (merge_dir / "merge_quality_report.json").read_text(encoding="utf-8")
     )
     assert report_json["total_issues"] == 2
+
+
+def test_quality_report_flags_hip_rows_with_missing_gaia_partner(tmp_path: Path):
+    gaia_dir = tmp_path / "gaia"
+    hip_path = tmp_path / "hip.parquet"
+    crossmatch_path = tmp_path / "gaia_hip.parquet"
+    overrides_path = tmp_path / "overrides.parquet"
+    merge_dir = tmp_path / "merged"
+
+    _write_parquet(
+        pd.DataFrame(columns=[*OUTPUT_COLS, "ruwe", "phot_g_mean_mag"]),
+        gaia_dir / "empty.parquet",
+    )
+    _write_parquet(
+        pd.DataFrame(
+            [
+                {
+                    **_row(
+                        source="hip",
+                        source_id=2010,
+                        r_pc=50_000.0,
+                        mag_abs=-5.0,
+                        astrometry_quality=5.0,
+                    ),
+                    "Sn": 55,
+                    "Hpmag": 3.2,
+                }
+            ]
+        ),
+        hip_path,
+    )
+    _write_parquet(
+        pd.DataFrame(
+            [
+                {
+                    "gaia_source_id": 1099,
+                    "hip_source_id": 2010,
+                    "number_of_neighbours": 2,
+                    "xm_flag": 68,
+                }
+            ]
+        ),
+        crossmatch_path,
+    )
+    _write_parquet(
+        pd.DataFrame(
+            columns=[
+                *OUTPUT_COLS,
+                "override_id",
+                "action",
+                "override_reason",
+                "override_policy_version",
+            ]
+        ),
+        overrides_path,
+    )
+    _write_parquet(
+        pd.DataFrame(
+            [
+                {
+                    "decision_type": "missing_gaia_partner",
+                    "gaia_source_id": "1099",
+                    "hip_source_id": "2010",
+                    "winner_catalog": "hip",
+                    "winner_source_id": "2010",
+                    "hip_score": 5.0,
+                    "number_of_neighbours": 2,
+                    "angular_distance_arcsec": 0.05,
+                    "crossmatch_xm_flag": 68,
+                    "hip_solution_type": 55,
+                    "hip_apparent_mag": 3.2,
+                }
+            ]
+        ),
+        merge_dir / "merge_decisions.parquet",
+    )
+    _write_parquet(
+        pd.DataFrame(
+            [
+                _row(
+                    source="hip",
+                    source_id="2010",
+                    r_pc=50_000.0,
+                    mag_abs=-5.0,
+                    astrometry_quality=5.0,
+                )
+            ],
+            columns=OUTPUT_COLS,
+        ),
+        merge_dir / "healpix" / "0" / "part.parquet",
+    )
+
+    report = run_quality_report(
+        gaia_dir=gaia_dir,
+        hip_path=hip_path,
+        crossmatch_path=crossmatch_path,
+        overrides_path=overrides_path,
+        merge_dir=merge_dir,
+        force=True,
+    )
+
+    assert report.missing_gaia_partner_decisions == 1
+    assert report.missing_gaia_partner_issues == 1
+    issues = pd.read_parquet(merge_dir / "merge_quality_issues.parquet")
+    assert issues["issue_type"].tolist() == ["missing_gaia_partner"]
+    assert issues.loc[0, "severity"] == "high"
+    assert "crossmatch_resolved_in_gaia" in issues.loc[0, "reasons"]

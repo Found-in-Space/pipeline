@@ -72,6 +72,27 @@ _MASS_COLUMN_MAP = {
     "gaia_bc_flame_spec": "bc_flame_spec",
 }
 
+_QUALITY_COLUMN_MAP = {
+    "gaia_phot_g_mean_mag": "phot_g_mean_mag",
+    "gaia_ruwe": "ruwe",
+    "gaia_parallax_over_error": "parallax_over_error",
+    "gaia_astrometric_params_solved": "astrometric_params_solved",
+    "gaia_visibility_periods_used": "visibility_periods_used",
+    "gaia_astrometric_excess_noise": "astrometric_excess_noise",
+    "gaia_astrometric_excess_noise_sig": "astrometric_excess_noise_sig",
+    "gaia_astrometric_sigma5d_max": "astrometric_sigma5d_max",
+    "gaia_astrometric_chi2_al": "astrometric_chi2_al",
+    "gaia_astrometric_n_good_obs_al": "astrometric_n_good_obs_al",
+    "gaia_astrometric_n_bad_obs_al": "astrometric_n_bad_obs_al",
+    "gaia_ipd_gof_harmonic_amplitude": "ipd_gof_harmonic_amplitude",
+    "gaia_ipd_frac_multi_peak": "ipd_frac_multi_peak",
+    "gaia_ipd_frac_odd_win": "ipd_frac_odd_win",
+    "gaia_duplicated_source": "duplicated_source",
+    "gaia_non_single_star": "non_single_star",
+    "gaia_phot_bp_rp_excess_factor": "phot_bp_rp_excess_factor",
+    "gaia_phot_variable_flag": "phot_variable_flag",
+}
+
 
 def gaia_enrichment_columns(columns: list[str] | set[str]) -> list[str]:
     return [
@@ -168,6 +189,15 @@ def write_gaia_sidecars(
         sidecar_root=sidecar_root,
         sidecar_name="mass",
         column_map=_MASS_COLUMN_MAP,
+        phase_tag=phase_tag,
+        seq_by_key=seq_by_key,
+    )
+    rows += _write_derived_sidecar(
+        sidecar_df,
+        hp=hp,
+        sidecar_root=sidecar_root,
+        sidecar_name="quality",
+        column_map=_QUALITY_COLUMN_MAP,
         phase_tag=phase_tag,
         seq_by_key=seq_by_key,
     )

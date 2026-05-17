@@ -42,8 +42,9 @@ Optional unless you use `fis-pipeline gaia download ...`.
 ## `[overrides]`
 
 - `output_parquet`: processed override table path.
-- `data_dir`: optional custom override YAML directory. If omitted, packaged
-  overrides are used.
+- `include_files`: explicit list of override YAML inputs. Entries may be
+  filesystem paths, resolved relative to the project file, or `builtin:sun.yaml`
+  for the packaged Sun override.
 
 ## `[merge]`
 

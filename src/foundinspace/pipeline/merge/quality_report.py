@@ -59,6 +59,7 @@ QUALITY_ISSUE_COLS = [
     "hip_solution_type",
     "number_of_neighbours",
     "angular_distance_arcsec",
+    "crossmatch_xm_flag",
     "overridden",
 ]
 
@@ -75,9 +76,11 @@ class QualityReport:
     issues_path: str
     thresholds: dict[str, float]
     score_decisions: int
+    missing_gaia_partner_decisions: int
     override_decisions: int
     override_targets: int
     matched_pair_issues: int
+    missing_gaia_partner_issues: int
     merged_row_issues: int
     total_issues: int
     issue_counts_by_type: dict[str, int]
@@ -147,6 +150,7 @@ def run_quality_report(
             "tie_break_reason",
             "number_of_neighbours",
             "angular_distance_arcsec",
+            "crossmatch_xm_flag",
             "gaia_ruwe",
             "gaia_phot_g_mean_mag",
             "hip_solution_type",
@@ -157,6 +161,9 @@ def run_quality_report(
     score_decisions = decisions.loc[
         decisions["decision_type"].astype(str).eq("score")
     ].copy()
+    missing_gaia_partner_decisions = decisions.loc[
+        decisions["decision_type"].astype(str).eq("missing_gaia_partner")
+    ].copy()
     matched_issues = _matched_pair_issues(
         score_decisions,
         gaia_dir=gaia_dir,
@@ -165,6 +172,11 @@ def run_quality_report(
         distance_disagreement_threshold=distance_disagreement_threshold,
         severe_distance_ratio=severe_distance_ratio,
         ruwe_threshold=ruwe_threshold,
+    )
+    missing_partner_issues = _missing_gaia_partner_issues(
+        missing_gaia_partner_decisions,
+        override_keys=override_keys,
+        high_astrometry_quality=high_astrometry_quality,
     )
     merged_issues = _merged_row_issues(
         shards_root,
@@ -176,7 +188,7 @@ def run_quality_report(
     )
 
     issues = pd.DataFrame(
-        [*matched_issues, *merged_issues],
+        [*matched_issues, *missing_partner_issues, *merged_issues],
         columns=QUALITY_ISSUE_COLS,
     )
     issues = _attach_labels(issues, labels)
@@ -203,9 +215,13 @@ def run_quality_report(
             "remote_luminous_pc": remote_luminous_pc,
         },
         score_decisions=int(len(score_decisions)),
-        override_decisions=int(len(decisions) - len(score_decisions)),
+        missing_gaia_partner_decisions=int(len(missing_gaia_partner_decisions)),
+        override_decisions=int(
+            len(decisions) - len(score_decisions) - len(missing_gaia_partner_decisions)
+        ),
         override_targets=int(len(override_keys)),
         matched_pair_issues=int(len(matched_issues)),
+        missing_gaia_partner_issues=int(len(missing_partner_issues)),
         merged_row_issues=int(len(merged_issues)),
         total_issues=int(len(issues)),
         issue_counts_by_type=_value_counts(issues, "issue_type"),
@@ -397,6 +413,78 @@ def _matched_pair_issues(
                 hip_solution_type=rec.get("hip_solution_type_use"),
                 number_of_neighbours=rec.get("number_of_neighbours"),
                 angular_distance_arcsec=rec.get("angular_distance_arcsec"),
+                crossmatch_xm_flag=rec.get("crossmatch_xm_flag"),
+            )
+        )
+    return issues
+
+
+def _missing_gaia_partner_issues(
+    decisions: pd.DataFrame,
+    *,
+    override_keys: set[tuple[str, str]],
+    high_astrometry_quality: float,
+) -> list[dict[str, Any]]:
+    if decisions.empty:
+        return []
+
+    decisions = decisions.copy()
+    decisions["hip_source_id_num"] = _parse_uint_series(decisions["hip_source_id"])
+    decisions = decisions.dropna(subset=["hip_source_id_num"])
+    issues: list[dict[str, Any]] = []
+    for rec in decisions.to_dict(orient="records"):
+        hip_source_id = _string_id(rec.get("hip_source_id_num"))
+        if ("hip", hip_source_id) in override_keys:
+            continue
+
+        reasons = ["gaia_partner_absent_from_gaia_stage"]
+        hip_score = _safe_float(rec.get("hip_score"))
+        if hip_score >= high_astrometry_quality:
+            reasons.append("hip_high_astrometry_quality")
+
+        hip_solution_type = _safe_int(rec.get("hip_solution_type"))
+        if hip_solution_type is not None and hip_solution_type != HIP_STANDARD_SOLUTION:
+            reasons.append("hip_non_standard_solution")
+
+        n_neighbours = _safe_int(rec.get("number_of_neighbours"))
+        if n_neighbours is not None and n_neighbours > 1:
+            reasons.append("multiple_gaia_neighbours")
+
+        xm_flag = _safe_int(rec.get("crossmatch_xm_flag"))
+        if xm_flag is not None and xm_flag != 0:
+            reasons.append("crossmatch_xm_flag_nonzero")
+            if xm_flag & 4:
+                reasons.append("crossmatch_resolved_in_gaia")
+            if xm_flag & 32:
+                reasons.append("crossmatch_underestimated_external_errors")
+            if xm_flag & 64:
+                reasons.append("crossmatch_large_gaia_ipd_or_ruwe_treatment")
+
+        severity = "medium"
+        if (
+            "hip_high_astrometry_quality" in reasons
+            or "hip_non_standard_solution" in reasons
+            or "multiple_gaia_neighbours" in reasons
+            or "crossmatch_resolved_in_gaia" in reasons
+        ):
+            severity = "high"
+
+        issues.append(
+            _issue_record(
+                issue_type="missing_gaia_partner",
+                severity=severity,
+                reasons=reasons,
+                source="hip",
+                source_id=hip_source_id,
+                gaia_source_id=_string_id(rec.get("gaia_source_id")),
+                hip_source_id=hip_source_id,
+                winner_catalog=rec.get("winner_catalog"),
+                winner_source_id=rec.get("winner_source_id"),
+                hip_score=rec.get("hip_score"),
+                hip_solution_type=rec.get("hip_solution_type"),
+                number_of_neighbours=rec.get("number_of_neighbours"),
+                angular_distance_arcsec=rec.get("angular_distance_arcsec"),
+                crossmatch_xm_flag=rec.get("crossmatch_xm_flag"),
             )
         )
     return issues
@@ -635,6 +723,13 @@ def _safe_float(value: Any) -> float:
     except (TypeError, ValueError):
         return math.nan
     return out
+
+
+def _safe_int(value: Any) -> int | None:
+    parsed = _parse_uint(value)
+    if pd.isna(parsed):
+        return None
+    return int(parsed)
 
 
 def _parse_uint_series(values: pd.Series) -> pd.Series:

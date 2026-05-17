@@ -40,8 +40,8 @@ fits the anonymous cap. If the query is too large, the downloader switches to
 authenticated access.
 
 The small profile uses core Gaia pipeline fields only. The full profile has no
-magnitude limit and explicitly enables the enriched `motion` and `mass` carry
-field sets.
+magnitude limit and explicitly enables the enriched `motion`, `mass`, and
+`quality` carry field sets.
 
 For unattended authenticated runs, set one of:
 

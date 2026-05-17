@@ -1,0 +1,112 @@
+[[fields]]
+name = "phot_g_mean_mag"
+source = "input"
+column = "phot_g_mean_mag"
+dtype = "float64"
+sidecar = "quality"
+unit = "mag"
+
+[[fields]]
+name = "ruwe"
+source = "input"
+column = "ruwe"
+dtype = "float64"
+sidecar = "quality"
+
+[[fields]]
+name = "parallax_over_error"
+expression = "g.parallax_over_error"
+dtype = "float64"
+sidecar = "quality"
+
+[[fields]]
+name = "astrometric_params_solved"
+expression = "g.astrometric_params_solved"
+dtype = "int64"
+sidecar = "quality"
+
+[[fields]]
+name = "visibility_periods_used"
+expression = "g.visibility_periods_used"
+dtype = "int64"
+sidecar = "quality"
+
+[[fields]]
+name = "astrometric_excess_noise"
+expression = "g.astrometric_excess_noise"
+dtype = "float64"
+sidecar = "quality"
+unit = "mas"
+
+[[fields]]
+name = "astrometric_excess_noise_sig"
+expression = "g.astrometric_excess_noise_sig"
+dtype = "float64"
+sidecar = "quality"
+
+[[fields]]
+name = "astrometric_sigma5d_max"
+expression = "g.astrometric_sigma5d_max"
+dtype = "float64"
+sidecar = "quality"
+unit = "mas"
+
+[[fields]]
+name = "astrometric_chi2_al"
+expression = "g.astrometric_chi2_al"
+dtype = "float64"
+sidecar = "quality"
+
+[[fields]]
+name = "astrometric_n_good_obs_al"
+expression = "g.astrometric_n_good_obs_al"
+dtype = "int64"
+sidecar = "quality"
+
+[[fields]]
+name = "astrometric_n_bad_obs_al"
+expression = "g.astrometric_n_bad_obs_al"
+dtype = "int64"
+sidecar = "quality"
+
+[[fields]]
+name = "ipd_gof_harmonic_amplitude"
+expression = "g.ipd_gof_harmonic_amplitude"
+dtype = "float64"
+sidecar = "quality"
+
+[[fields]]
+name = "ipd_frac_multi_peak"
+expression = "g.ipd_frac_multi_peak"
+dtype = "int64"
+sidecar = "quality"
+
+[[fields]]
+name = "ipd_frac_odd_win"
+expression = "g.ipd_frac_odd_win"
+dtype = "int64"
+sidecar = "quality"
+
+[[fields]]
+name = "duplicated_source"
+expression = "g.duplicated_source"
+dtype = "bool"
+sidecar = "quality"
+
+[[fields]]
+name = "non_single_star"
+expression = "g.non_single_star"
+dtype = "int64"
+sidecar = "quality"
+
+[[fields]]
+name = "phot_bp_rp_excess_factor"
+expression = "g.phot_bp_rp_excess_factor"
+dtype = "float64"
+sidecar = "quality"
+
+[[fields]]
+name = "phot_variable_flag"
+expression = "g.phot_variable_flag"
+dtype = "string"
+sidecar = "quality"

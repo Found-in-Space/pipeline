@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from contextlib import suppress
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -13,7 +13,10 @@ from foundinspace.pipeline.identifiers.schema import (
     IDENTIFIER_OUTPUT_COLS,
     empty_identifier_frame,
 )
-from foundinspace.pipeline.overrides.loader import load_parsed_override_documents
+from foundinspace.pipeline.overrides.loader import (
+    OverrideInclude,
+    load_parsed_override_documents,
+)
 
 _INT_IDENTIFIER_KEYS = ("gaia_source_id", "hip_id", "hd", "flamsteed")
 _STR_IDENTIFIER_KEYS = ("bayer", "constellation", "proper_name")
@@ -48,10 +51,12 @@ def _row_for_override_identifiers(star: dict[str, Any]) -> dict[str, Any] | None
     return row
 
 
-def build_override_identifier_rows(data_dir: Path | None = None) -> pd.DataFrame:
+def build_override_identifier_rows(
+    include_files: Sequence[OverrideInclude] = (),
+) -> pd.DataFrame:
     """Return identifier rows declared in override YAML documents."""
     rows: list[dict[str, Any]] = []
-    for doc in load_parsed_override_documents(data_dir=data_dir):
+    for doc in load_parsed_override_documents(include_files):
         stars = doc.get("stars")
         if not isinstance(stars, list):
             continue

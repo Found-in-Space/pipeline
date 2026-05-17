@@ -30,7 +30,7 @@ output_parquet = "data/processed/identifiers_map.parquet"
 
 [overrides]
 output_parquet = "data/processed/overrides.parquet"
-# data_dir = "path/to/overrides"
+include_files = ["builtin:sun.yaml"]
 
 [merge]
 output_dir = "data/processed/merged-small"

@@ -23,6 +23,7 @@ DECISION_COLS = [
     "note",
     "number_of_neighbours",
     "angular_distance_arcsec",
+    "crossmatch_xm_flag",
     "gaia_ruwe",
     "gaia_phot_g_mean_mag",
     "hip_solution_type",

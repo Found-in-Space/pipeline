@@ -200,6 +200,14 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
             {"gaia_source_id": 1003, "hip_source_id": 2003, "mapping_source": "test"},
             {"gaia_source_id": 1004, "hip_source_id": 2004, "mapping_source": "test"},
             {"gaia_source_id": 1005, "hip_source_id": 2005, "mapping_source": "test"},
+            {
+                "gaia_source_id": 1099,
+                "hip_source_id": 2010,
+                "mapping_source": "test",
+                "number_of_neighbours": 2,
+                "angular_distance": 0.05,
+                "xm_flag": 68,
+            },
         ]
     )
     _write_parquet(crossmatch_df, crossmatch_path)
@@ -325,6 +333,7 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
     assert report.matched_pairs_scored == 2
     assert report.matched_winner_gaia == 2
     assert report.matched_winner_hip == 0
+    assert report.hip_with_missing_gaia_partner == 1
     assert report.unmatched_gaia == 1
     assert report.unmatched_hip == 1
     assert report.override_replace_applied == 2
@@ -338,11 +347,17 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
     assert "override_no_effect" in set(decisions_df["decision_type"].astype(str))
     score_decisions = decisions_df[decisions_df["decision_type"].astype(str) == "score"]
     assert set(score_decisions["mapping_source"].astype(str)) == {"test"}
+    missing_gaia = decisions_df[
+        decisions_df["decision_type"].astype(str) == "missing_gaia_partner"
+    ]
+    assert missing_gaia["gaia_source_id"].astype(str).tolist() == ["1099"]
+    assert missing_gaia["crossmatch_xm_flag"].tolist() == [68]
 
     report_json = json.loads(
         (output_dir / "merge_report.json").read_text(encoding="utf-8")
     )
     assert report_json["rows_emitted_total"] == 7
+    assert report_json["hip_with_missing_gaia_partner"] == 1
     assert report_json["healpix_order"] == 1
     assert report_json["gaia_dir"] == str(gaia_dir)
     assert report_json["hip_path"] == str(hip_path)
@@ -454,6 +469,8 @@ def test_run_merge_writes_gaia_enrichment_sidecars_for_hip_winner(tmp_path: Path
         "gaia_mass_flame_solar": 0.8,
         "gaia_age_flame_gyr": 4.2,
         "gaia_bc_flame": -0.07,
+        "gaia_ruwe": 1.1,
+        "gaia_astrometric_params_solved": 31,
     }
     _write_parquet(pd.DataFrame([gaia_row]), gaia_dir / "b1.parquet")
 
@@ -518,9 +535,16 @@ def test_run_merge_writes_gaia_enrichment_sidecars_for_hip_winner(tmp_path: Path
     assert mass_df.loc[0, "age_flame_gyr"] == pytest.approx(4.2)
     assert mass_df.loc[0, "bc_flame"] == pytest.approx(-0.07)
 
+    quality_files = sorted((sidecar_dir / "quality").glob("*/*.parquet"))
+    quality_df = pd.concat(
+        [pd.read_parquet(p) for p in quality_files], ignore_index=True
+    )
+    assert quality_df.loc[0, "ruwe"] == pytest.approx(1.1)
+    assert int(quality_df.loc[0, "astrometric_params_solved"]) == 31
+
 
 def test_derived_sidecar_maps_cover_configured_gaia_field_sets() -> None:
-    fields = load_gaia_field_sets(("motion", "mass", "mass_spec"))
+    fields = load_gaia_field_sets(("motion", "mass", "mass_spec", "quality"))
     grouped = fields_by_sidecar(fields)
 
     assert {field.output_column for field in grouped["motion"]} <= set(
@@ -528,6 +552,9 @@ def test_derived_sidecar_maps_cover_configured_gaia_field_sets() -> None:
     )
     assert {field.output_column for field in grouped["mass"]} <= set(
         sidecars._MASS_COLUMN_MAP
+    )
+    assert {field.output_column for field in grouped["quality"]} <= set(
+        sidecars._QUALITY_COLUMN_MAP
     )
 
 

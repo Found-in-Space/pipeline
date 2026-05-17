@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,10 @@ import pyarrow.parquet as pq
 from foundinspace.pipeline.common.ids import serialize_source_id
 from foundinspace.pipeline.common.quality_flags import pack_status_flags
 from foundinspace.pipeline.constants import DIST_SRC_OVERRIDE, OUTPUT_COLS
-from foundinspace.pipeline.overrides.loader import load_normalized_override_stars
+from foundinspace.pipeline.overrides.loader import (
+    OverrideInclude,
+    load_normalized_override_stars,
+)
 
 OVERRIDE_METADATA_COLS = [
     "override_id",
@@ -78,10 +82,10 @@ def _row_for_star(star: dict[str, Any]) -> dict[str, Any]:
 
 def build_overrides_dataframe(
     *,
-    data_dir: Path | None = None,
+    include_files: Sequence[OverrideInclude],
 ) -> pd.DataFrame:
     """Load YAML overrides and return a frame with OUTPUT_COLS + override metadata."""
-    stars = load_normalized_override_stars(data_dir=data_dir)
+    stars = load_normalized_override_stars(include_files)
     if not stars:
         return pd.DataFrame(columns=OUTPUT_OVERRIDES_COLS)
 
@@ -107,15 +111,15 @@ def build_overrides_dataframe(
 def prepare_overrides_parquet(
     output_path: Path,
     *,
-    data_dir: Path | None = None,
+    include_files: Sequence[OverrideInclude],
     overwrite: bool = False,
 ) -> Path:
-    """Write ``output_path`` (zstd Parquet) from packaged or custom override YAML dir."""
+    """Write ``output_path`` (zstd Parquet) from explicit override YAML files."""
     output_path = Path(output_path).expanduser()
     if output_path.exists() and not overwrite:
         raise FileExistsError(str(output_path))
 
-    df = build_overrides_dataframe(data_dir=data_dir)
+    df = build_overrides_dataframe(include_files=include_files)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(df, preserve_index=False)
     pq.write_table(table, str(output_path), compression="zstd")

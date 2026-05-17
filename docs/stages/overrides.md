@@ -6,8 +6,10 @@ Normalize curated YAML overrides into a merger-ready Parquet table.
 
 ## Inputs
 
-- Packaged override YAML files in `foundinspace.pipeline.overrides.data`.
-- Optional custom `[overrides] data_dir`.
+- Explicit `[overrides] include_files`.
+- `builtin:sun.yaml` for the packaged pipeline Sun override.
+- File paths may point at versioned catalog publications, such as the
+  Found-In-Space manual override catalog.
 
 ## Command
 
@@ -18,6 +20,21 @@ uv run fis-pipeline overrides build --project project.toml
 ## Outputs
 
 - `[overrides] output_parquet`
+
+## Project Configuration
+
+```toml
+[overrides]
+output_parquet = "data/processed/overrides.parquet"
+include_files = [
+  "builtin:sun.yaml",
+  "../catalogs/publications/20260517.1/catalog/alpha_cen.yaml",
+  "../catalogs/publications/20260517.1/catalog/binaries.yaml",
+]
+```
+
+Every override source must be listed explicitly. The stage does not scan
+directories or load non-Sun curated overrides from the pipeline package.
 
 ## Owning Modules
 
