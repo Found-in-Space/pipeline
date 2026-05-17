@@ -26,6 +26,7 @@ _GAIA_DOWNLOAD_KEYS = {
     "mode",
     "access",
     "mag_limit",
+    "source_where_adql",
     "state_db",
     "row_cap",
     "max_active_jobs",
@@ -149,6 +150,11 @@ class _SectionAccessor:
             raise ValueError(f"{self._section}.{key} must be finite")
         return value_f
 
+    def _optional_str_field(self, key: str) -> str | None:
+        if self._raw is None or key not in self._raw:
+            return None
+        return _require_str(self._raw, key, field_name=f"{self._section}.{key}")
+
     def _optional_str_choice(
         self,
         key: str,
@@ -239,6 +245,17 @@ class GaiaDownloadConfig(_SectionAccessor):
     @property
     def mag_limit(self) -> float | None:
         return self._optional_float_field("mag_limit")
+
+    @property
+    def source_where_adql(self) -> str | None:
+        value = self._optional_str_field("source_where_adql")
+        if value is None:
+            return None
+        if ";" in value:
+            raise ValueError(
+                "gaia_download.source_where_adql must not contain semicolons"
+            )
+        return value
 
     @property
     def state_db(self) -> Path:

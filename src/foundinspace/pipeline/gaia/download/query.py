@@ -60,6 +60,7 @@ class GaiaQuerySpec:
     mode: str
     mag_limit: float | None
     carry_fields: tuple[GaiaCarryField, ...]
+    source_where_adql: str | None = None
 
     @property
     def requires_aps(self) -> bool:
@@ -74,6 +75,17 @@ def _format_float(value: float) -> str:
     return format(float(value), ".12g")
 
 
+def _normalize_source_where_adql(fragment: str | None) -> str | None:
+    if fragment is None:
+        return None
+    normalized = fragment.strip()
+    if not normalized:
+        raise ValueError("gaia_download.source_where_adql must not be empty")
+    if ";" in normalized:
+        raise ValueError("gaia_download.source_where_adql must not contain semicolons")
+    return normalized
+
+
 def _where_clauses(
     spec: GaiaQuerySpec,
     *,
@@ -85,6 +97,9 @@ def _where_clauses(
     ]
     if spec.mag_limit is not None:
         clauses.append(f"g.phot_g_mean_mag <= {_format_float(spec.mag_limit)}")
+    source_where = _normalize_source_where_adql(spec.source_where_adql)
+    if source_where is not None:
+        clauses.append(f"({source_where})")
     if hp3_values is not None:
         if not hp3_values:
             raise ValueError("hp3_values must not be empty when provided")
@@ -98,6 +113,7 @@ def _format_where(clauses: list[str]) -> str:
 
 
 def validate_query_spec(spec: GaiaQuerySpec) -> None:
+    _normalize_source_where_adql(spec.source_where_adql)
     core_names = set(CORE_OUTPUT_NAMES)
     for field in spec.carry_fields:
         if field.source == "query" and field.name in core_names:

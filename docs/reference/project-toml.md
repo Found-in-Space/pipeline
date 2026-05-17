@@ -16,6 +16,10 @@ Optional unless you use `fis-pipeline gaia download ...`.
 - `access`: `auto`, `anonymous`, or `authenticated`.
 - `mag_limit`: Gaia Archive G magnitude limit. Required for `small`; omitted
   for `full`.
+- `source_where_adql`: optional additional Gaia Archive `WHERE` fragment. The
+  fragment is appended to both the count query and download queries, wrapped in
+  parentheses, and may use the query aliases `g` (`gaiadr3.gaia_source`) and
+  `d` (`external.gaiaedr3_distance`). Semicolons are rejected.
 - `state_db`: local SQLite path for counts, batch plans, jobs, and resume state.
 - `row_cap`: target maximum rows per authenticated batch.
 - `max_active_jobs`: maximum authenticated Gaia jobs to keep in flight.

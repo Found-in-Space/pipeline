@@ -88,6 +88,23 @@ uv run fis-pipeline gaia download plan --project project-small.toml
 The count query validates the generated source query and gives exact row counts
 before result jobs are submitted. The planner stores counts, batch membership,
 query hashes, output paths, and job-ready ADQL in `[gaia_download].state_db`.
+It also writes the exact local ADQL files used for the run beside the state DB:
+`count.adql` and one `<batch>.adql` file per download batch.
+
+For release-specific cuts that must happen in the Gaia Archive before download,
+add a `source_where_adql` fragment:
+
+```toml
+[gaia_download]
+source_where_adql = """
+g.phot_g_mean_mag <= 15
+OR d.r_med_photogeo <= 100
+OR d.r_med_geo <= 100
+"""
+```
+
+The fragment is appended to both count and download queries, so the generated
+`.adql` files are the provenance record to carry into a catalog release.
 
 Small runs normally produce one all-sky magnitude-limited batch. Full runs use
 deterministic HEALPix batch packing under `[gaia_download].row_cap`, with

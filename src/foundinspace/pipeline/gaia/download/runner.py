@@ -83,6 +83,7 @@ def query_spec_from_project(project: PipelineProject) -> GaiaQuerySpec:
         mode=mode,
         mag_limit=download_mag_limit,
         carry_fields=fields,
+        source_where_adql=project.gaia_download.source_where_adql,
     )
 
 

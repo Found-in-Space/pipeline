@@ -67,10 +67,19 @@ class _DeleteFailsArchive(_FakeArchive):
 
 
 def _write_project(
-    tmp_path: Path, *, mode: str = "small", access: str = "auto"
+    tmp_path: Path,
+    *,
+    mode: str = "small",
+    access: str = "auto",
+    source_where_adql: str | None = None,
 ) -> Path:
     project_path = tmp_path / "project.toml"
     mag_limit = "mag_limit = 9.0\n" if mode == "small" else ""
+    source_where = (
+        f'source_where_adql = """\n{source_where_adql}\n"""\n'
+        if source_where_adql is not None
+        else ""
+    )
     project_path.write_text(
         f"""
 format_version = 1
@@ -86,6 +95,7 @@ access = "{access}"
 {mag_limit}state_db = "data/processed/gaia-download.sqlite"
 row_cap = 1000
 max_active_jobs = 2
+{source_where}\
 carry_field_sets = ["motion", "mass"]
 
 [gaia-to-hip]
@@ -219,7 +229,16 @@ def test_run_echoes_wait_status_when_poll_phase_is_unchanged(tmp_path: Path) -> 
 
 
 def test_write_browser_queries_for_small_profile(tmp_path: Path) -> None:
-    project = load_project(_write_project(tmp_path))
+    project = load_project(
+        _write_project(
+            tmp_path,
+            source_where_adql=(
+                "g.phot_g_mean_mag <= 15\n"
+                "OR d.r_med_photogeo <= 100\n"
+                "OR d.r_med_geo <= 100"
+            ),
+        )
+    )
 
     summary = write_browser_queries(project, echo=lambda _msg: None)
 
@@ -231,6 +250,9 @@ def test_write_browser_queries_for_small_profile(tmp_path: Path) -> None:
     download_query = summary.download_query_path.read_text(encoding="utf-8")
     count_query = summary.count_query_path.read_text(encoding="utf-8")
     assert "g.phot_g_mean_mag <= 9" in download_query
+    assert "OR d.r_med_photogeo <= 100" in download_query
+    assert "OR d.r_med_geo <= 100" in download_query
+    assert "OR d.r_med_photogeo <= 100" in count_query
     assert "(g.source_id / 9007199254740992) IN" not in download_query
     assert "COUNT(*) AS n" in count_query
 

@@ -147,6 +147,10 @@ state_db = "data/processed/gaia-download.sqlite"
 row_cap = 123
 max_active_jobs = 2
 carry_field_sets = ["motion", "mass"]
+source_where_adql = '''
+g.phot_g_mean_mag <= 15
+OR d.r_med_geo <= 100
+'''
 """,
         encoding="utf-8",
     )
@@ -164,6 +168,10 @@ carry_field_sets = ["motion", "mass"]
     assert project.gaia_download.row_cap == 123
     assert project.gaia_download.max_active_jobs == 2
     assert project.gaia_download.carry_field_sets == ("motion", "mass")
+    assert (
+        project.gaia_download.source_where_adql
+        == "g.phot_g_mean_mag <= 15\nOR d.r_med_geo <= 100"
+    )
     assert project.merge.sidecar_output_dir == tmp_path / "data/processed/sidecars"
 
 
@@ -183,6 +191,28 @@ state_db = "data/processed/gaia-download.sqlite"
     project = load_project(project_path)
 
     assert project.gaia_download.carry_field_sets == ()
+    assert project.gaia_download.source_where_adql is None
+
+
+def test_load_project_gaia_download_rejects_source_where_semicolon(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text()
+        + """
+[gaia_download]
+mode = "small"
+mag_limit = 9.0
+state_db = "data/processed/gaia-download.sqlite"
+source_where_adql = "g.phot_g_mean_mag <= 15; DROP TABLE x"
+""",
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+    with pytest.raises(ValueError, match="source_where_adql"):
+        _ = project.gaia_download.source_where_adql
 
 
 def test_load_project_rejects_unknown_keys_in_merge(tmp_path: Path) -> None:
