@@ -62,6 +62,27 @@ sidecar = "mass"
 unit = "solar radius"
 
 [[fields]]
+name = "age_flame_spec_gyr"
+expression = "aps.age_flame_spec"
+dtype = "float64"
+sidecar = "mass"
+unit = "Gyr"
+
+[[fields]]
+name = "age_flame_spec_lower_gyr"
+expression = "aps.age_flame_spec_lower"
+dtype = "float64"
+sidecar = "mass"
+unit = "Gyr"
+
+[[fields]]
+name = "age_flame_spec_upper_gyr"
+expression = "aps.age_flame_spec_upper"
+dtype = "float64"
+sidecar = "mass"
+unit = "Gyr"
+
+[[fields]]
 name = "flags_flame_spec"
 expression = "aps.flags_flame_spec"
 dtype = "string"

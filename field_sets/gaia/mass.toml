@@ -62,6 +62,34 @@ sidecar = "mass"
 unit = "solar radius"
 
 [[fields]]
+name = "age_flame_gyr"
+expression = "ap.age_flame"
+dtype = "float64"
+sidecar = "mass"
+unit = "Gyr"
+
+[[fields]]
+name = "age_flame_lower_gyr"
+expression = "ap.age_flame_lower"
+dtype = "float64"
+sidecar = "mass"
+unit = "Gyr"
+
+[[fields]]
+name = "age_flame_upper_gyr"
+expression = "ap.age_flame_upper"
+dtype = "float64"
+sidecar = "mass"
+unit = "Gyr"
+
+[[fields]]
+name = "bc_flame"
+expression = "ap.bc_flame"
+dtype = "float64"
+sidecar = "mass"
+unit = "mag"
+
+[[fields]]
 name = "teff_gspphot"
 source = "input"
 column = "teff_gspphot"

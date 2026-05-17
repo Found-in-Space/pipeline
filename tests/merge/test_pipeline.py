@@ -10,6 +10,11 @@ import pyarrow.parquet as pq
 import pytest
 
 from foundinspace.pipeline.constants import OUTPUT_COLS
+from foundinspace.pipeline.gaia.download.fieldsets import (
+    fields_by_sidecar,
+    load_gaia_field_sets,
+)
+from foundinspace.pipeline.merge import sidecars
 from foundinspace.pipeline.merge.overrides import OVERRIDE_REQUIRED_COLS
 from foundinspace.pipeline.merge.pipeline import run_merge
 from foundinspace.pipeline.merge.policy import (
@@ -444,7 +449,11 @@ def test_run_merge_writes_gaia_enrichment_sidecars_for_hip_winner(tmp_path: Path
         "ruwe": 1.1,
         "gaia_ref_epoch": 2016.0,
         "gaia_pmra_masyr": 12.5,
+        "gaia_bp_rp": 1.3,
+        "gaia_photometry_quality": 0.1,
         "gaia_mass_flame_solar": 0.8,
+        "gaia_age_flame_gyr": 4.2,
+        "gaia_bc_flame": -0.07,
     }
     _write_parquet(pd.DataFrame([gaia_row]), gaia_dir / "b1.parquet")
 
@@ -500,10 +509,26 @@ def test_run_merge_writes_gaia_enrichment_sidecars_for_hip_winner(tmp_path: Path
     motion_files = sorted((sidecar_dir / "motion").glob("*/*.parquet"))
     motion_df = pd.concat([pd.read_parquet(p) for p in motion_files], ignore_index=True)
     assert motion_df.loc[0, "pmra_masyr"] == pytest.approx(12.5)
+    assert motion_df.loc[0, "bp_rp"] == pytest.approx(1.3)
+    assert motion_df.loc[0, "photometry_quality"] == pytest.approx(0.1)
 
     mass_files = sorted((sidecar_dir / "mass").glob("*/*.parquet"))
     mass_df = pd.concat([pd.read_parquet(p) for p in mass_files], ignore_index=True)
     assert mass_df.loc[0, "mass_flame_solar"] == pytest.approx(0.8)
+    assert mass_df.loc[0, "age_flame_gyr"] == pytest.approx(4.2)
+    assert mass_df.loc[0, "bc_flame"] == pytest.approx(-0.07)
+
+
+def test_derived_sidecar_maps_cover_configured_gaia_field_sets() -> None:
+    fields = load_gaia_field_sets(("motion", "mass", "mass_spec"))
+    grouped = fields_by_sidecar(fields)
+
+    assert {field.output_column for field in grouped["motion"]} <= set(
+        sidecars._MOTION_COLUMN_MAP
+    )
+    assert {field.output_column for field in grouped["mass"]} <= set(
+        sidecars._MASS_COLUMN_MAP
+    )
 
 
 # ---------------------------------------------------------------------------

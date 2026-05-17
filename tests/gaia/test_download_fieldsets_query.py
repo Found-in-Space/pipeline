@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from foundinspace.pipeline.gaia.download.fieldsets import (
+    fields_by_sidecar,
     gaia_enrichment_columns,
     load_gaia_field_sets,
 )
@@ -17,8 +18,16 @@ def test_load_gaia_field_sets_defaults_and_enrichment_columns() -> None:
     names = {field.name for field in fields}
     assert "ref_epoch" in names
     assert "mass_flame_solar" in names
+    assert "age_flame_gyr" in names
+    assert "bc_flame" in names
     assert "mass_flame_spec_solar" not in names
+    assert "age_flame_spec_gyr" not in names
     assert "gaia_ref_epoch" in gaia_enrichment_columns(fields)
+    assert "gaia_age_flame_gyr" in gaia_enrichment_columns(fields)
+
+    grouped = fields_by_sidecar(fields)
+    assert "mass" in grouped
+    assert "motion" in grouped
 
 
 def test_download_query_joins_aps_only_when_field_set_needs_it() -> None:
@@ -29,6 +38,8 @@ def test_download_query_joins_aps_only_when_field_set_needs_it() -> None:
 
     assert "g.ref_epoch AS ref_epoch" in query
     assert "ap.mass_flame AS mass_flame_solar" in query
+    assert "ap.age_flame AS age_flame_gyr" in query
+    assert "ap.bc_flame AS bc_flame" in query
     assert "astrophysical_parameters_supp" not in query
     assert "g.phot_g_mean_mag <= 9" in query
     assert "IN (3, 7)" in query
@@ -41,6 +52,7 @@ def test_download_query_joins_aps_only_when_field_set_needs_it() -> None:
     query_with_supp = build_download_query(spec_with_supp, hp3_values=(1,))
     assert "astrophysical_parameters_supp AS aps" in query_with_supp
     assert "aps.mass_flame_spec AS mass_flame_spec_solar" in query_with_supp
+    assert "aps.age_flame_spec AS age_flame_spec_gyr" in query_with_supp
 
 
 def test_download_query_can_omit_healpix_filter_for_browser_export() -> None:
