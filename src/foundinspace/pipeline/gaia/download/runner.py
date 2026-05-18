@@ -604,9 +604,12 @@ def _poll_submitted_batches(
         try:
             phase = archive.poll_phase(batch.job_id, access_mode=batch.access_mode)
         except Exception as exc:
-            state.mark_failed(batch.batch_id, phase=batch.phase, error_message=str(exc))
-            echo(f"Gaia {batch.batch_id}: poll failed ({exc})")
-            progress = True
+            state.mark_poll_error(
+                batch.batch_id,
+                phase=batch.phase,
+                error_message=str(exc),
+            )
+            echo(f"Gaia {batch.batch_id}: poll failed; will retry ({exc})")
             continue
 
         if phase == "COMPLETED":

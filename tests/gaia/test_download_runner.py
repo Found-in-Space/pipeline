@@ -84,6 +84,20 @@ class _SlowArchive(_FakeArchive):
         return self.phases.pop(0)
 
 
+class _PollFailsThenCompletesArchive(_FakeArchive):
+    def __init__(self) -> None:
+        super().__init__()
+        self.polls = 0
+
+    def poll_phase(self, job_id: str, *, access_mode: str):
+        if job_id.startswith("count-job-"):
+            return "COMPLETED"
+        self.polls += 1
+        if self.polls == 1:
+            raise RuntimeError("temporary 503")
+        return "COMPLETED"
+
+
 class _DeleteFailsArchive(_FakeArchive):
     def delete_job(self, job_id: str, *, access_mode: str):
         self.deleted.append(job_id)
@@ -428,6 +442,32 @@ def test_run_echoes_wait_status_when_poll_phase_is_unchanged(tmp_path: Path) -> 
     assert any("phase=EXECUTING" in message for message in messages)
     assert any("waiting 0s before next poll" in message for message in messages)
     assert any("job_id=job-1" in message for message in messages)
+
+
+def test_poll_failure_is_retried_without_failing_batch(tmp_path: Path) -> None:
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
+    archive = _PollFailsThenCompletesArchive()
+    messages: list[str] = []
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    summary = run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=messages.append,
+    )
+
+    assert summary.deleted_remote_batches == 1
+    assert summary.failed_batches == 0
+    assert any("poll failed; will retry" in message for message in messages)
+    assert archive.deleted == ["count-job-1", "job-1"]
 
 
 def test_plan_resumes_background_count_job(tmp_path: Path) -> None:

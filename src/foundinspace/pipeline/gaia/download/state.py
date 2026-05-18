@@ -322,6 +322,22 @@ class GaiaDownloadState:
             updates["state"] = state
         self._update(batch_id, updates)
 
+    def mark_poll_error(
+        self,
+        batch_id: str,
+        *,
+        phase: str | None,
+        error_message: str,
+    ) -> None:
+        self._update(
+            batch_id,
+            {
+                "phase": phase,
+                "last_polled_at": utc_now_iso(),
+                "error_message": error_message,
+            },
+        )
+
     def mark_completed_remote(self, batch_id: str, *, phase: str = "COMPLETED") -> None:
         self._update(
             batch_id,
