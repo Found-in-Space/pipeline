@@ -114,6 +114,18 @@ class _ErrorArchive(_FakeArchive):
         return "archive failed"
 
 
+class _TransientJobErrorThenCompletesArchive(_FakeArchive):
+    def poll_phase(self, job_id: str, *, access_mode: str):
+        if job_id.startswith("count-job-"):
+            return "COMPLETED"
+        if job_id == "job-1":
+            return "ERROR"
+        return "COMPLETED"
+
+    def job_error(self, job_id: str, *, access_mode: str):
+        return "Could not open JPA EntityManager for transaction"
+
+
 def _write_project(
     tmp_path: Path,
     *,
@@ -310,6 +322,39 @@ def test_authenticated_error_job_is_deleted_before_terminal(
         batch = state.read_batches()[0]
     assert batch.state == "failed"
     assert batch.remote_deleted_at is not None
+
+
+def test_transient_archive_error_is_requeued_after_remote_delete(
+    tmp_path: Path,
+) -> None:
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
+    archive = _TransientJobErrorThenCompletesArchive()
+    messages: list[str] = []
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    summary = run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=messages.append,
+    )
+
+    assert summary.failed_batches == 0
+    assert summary.deleted_remote_batches == 1
+    assert archive.submitted == ["job-1", "job-2"]
+    assert archive.deleted == ["count-job-1", "job-1", "job-2"]
+    assert any("retrying transient archive failure" in message for message in messages)
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batch = state.read_batches()[0]
+    assert batch.state == "deleted_remote"
+    assert batch.retry_count == 1
 
 
 def test_authenticated_remote_quota_guard_blocks_insufficient_quota(

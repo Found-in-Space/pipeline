@@ -28,6 +28,16 @@ Echo = Callable[[str], None]
 
 ANONYMOUS_QUOTA_ERROR = "Filesystem quota exceeded for user anonymous"
 REMOTE_GB = 1_000_000_000
+MAX_TRANSIENT_BATCH_RETRIES = 3
+TRANSIENT_ARCHIVE_ERROR_MARKERS = (
+    "503 Service Unavailable",
+    "temporarily unable to service",
+    "maintenance downtime",
+    "capacity problems",
+    "Could not open JPA EntityManager",
+    "Connection reset",
+    "Read timed out",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -510,7 +520,15 @@ def _delete_failed_authenticated(
             echo(f"Gaia {batch.batch_id}: failed remote delete pending ({exc})")
         else:
             state.mark_remote_deleted(batch.batch_id)
-            echo(f"Gaia {batch.batch_id}: deleted failed remote job {batch.job_id}")
+            if _should_retry_failed_batch(batch):
+                state.mark_retry_planned(batch.batch_id)
+                echo(
+                    f"Gaia {batch.batch_id}: retrying transient archive failure "
+                    f"after remote delete ({batch.retry_count}/"
+                    f"{MAX_TRANSIENT_BATCH_RETRIES})"
+                )
+            else:
+                echo(f"Gaia {batch.batch_id}: deleted failed remote job {batch.job_id}")
             progress = True
     return progress
 
@@ -525,6 +543,13 @@ def _has_authenticated_cleanup_pending(state: GaiaDownloadState) -> bool:
         if batch.state == "failed" and batch.job_id and batch.remote_deleted_at is None:
             return True
     return False
+
+
+def _should_retry_failed_batch(batch: BatchState) -> bool:
+    if batch.retry_count > MAX_TRANSIENT_BATCH_RETRIES:
+        return False
+    error = batch.error_message or ""
+    return any(marker in error for marker in TRANSIENT_ARCHIVE_ERROR_MARKERS)
 
 
 def _download_completed_batches(

@@ -147,6 +147,11 @@ jobs so the Gaia account quota is not silently consumed. Failed authenticated
 jobs are also deleted before the batch is considered terminal, because failed
 Archive jobs can still consume file quota.
 
+Transient Gaia Archive backend failures, such as temporary service outages or
+JPA transaction errors, are requeued after the failed remote job is deleted.
+Each batch gets up to three transient retries; query, quota, and data errors
+remain terminal so they do not loop indefinitely.
+
 ## 6. Build Gaia Staging
 
 Once VOTables exist under `[gaia] input_dir`, build the staged Gaia Parquet:
