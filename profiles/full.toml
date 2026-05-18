@@ -11,6 +11,10 @@ access = "authenticated"
 state_db = "data/processed/gaia-download.sqlite"
 row_cap = 55000000
 max_active_jobs = 4
+# Defaults to Gaia's standard 20 GB async result quota; override if your
+# account has increased quota.
+# remote_quota_bytes = 20000000000
+remote_min_free_bytes = 5000000000
 carry_field_sets = ["motion", "mass"]
 
 [gaia-to-hip]

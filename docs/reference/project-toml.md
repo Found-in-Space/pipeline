@@ -23,6 +23,10 @@ Optional unless you use `fis-pipeline gaia download ...`.
 - `state_db`: local SQLite path for counts, batch plans, jobs, and resume state.
 - `row_cap`: target maximum rows per authenticated batch.
 - `max_active_jobs`: maximum authenticated Gaia jobs to keep in flight.
+- `remote_quota_bytes`: Gaia Archive async result quota for the account.
+  Defaults to `20000000000`; raise it for accounts with increased quota.
+- `remote_min_free_bytes`: minimum Gaia Archive async result space to leave free
+  after each submission. Defaults to `5000000000`.
 - `carry_field_sets`: checked-in Gaia field sets to preserve for sidecars.
   Defaults to `[]`; the `full` profile opts into `["motion", "mass"]`.
 

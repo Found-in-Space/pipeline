@@ -146,6 +146,8 @@ mag_limit = 9.0
 state_db = "data/processed/gaia-download.sqlite"
 row_cap = 123
 max_active_jobs = 2
+remote_quota_bytes = 30000000000
+remote_min_free_bytes = 5000000000
 carry_field_sets = ["motion", "mass"]
 source_where_adql = '''
 g.phot_g_mean_mag <= 15
@@ -167,6 +169,8 @@ OR d.r_med_geo <= 100
     )
     assert project.gaia_download.row_cap == 123
     assert project.gaia_download.max_active_jobs == 2
+    assert project.gaia_download.remote_quota_bytes == 30_000_000_000
+    assert project.gaia_download.remote_min_free_bytes == 5_000_000_000
     assert project.gaia_download.carry_field_sets == ("motion", "mass")
     assert (
         project.gaia_download.source_where_adql
@@ -192,6 +196,8 @@ state_db = "data/processed/gaia-download.sqlite"
 
     assert project.gaia_download.carry_field_sets == ()
     assert project.gaia_download.source_where_adql is None
+    assert project.gaia_download.remote_quota_bytes == 20_000_000_000
+    assert project.gaia_download.remote_min_free_bytes == 5_000_000_000
 
 
 def test_load_project_gaia_download_rejects_source_where_semicolon(

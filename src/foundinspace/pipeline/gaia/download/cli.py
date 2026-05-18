@@ -42,13 +42,21 @@ def _load_project_or_die(project_path: Path, *required: str):
     default=False,
     help="Re-run the Gaia HEALPix count query even if cached state is current.",
 )
-def plan(project_path: Path, refresh_counts: bool) -> None:
+@click.option(
+    "--poll-seconds",
+    type=float,
+    default=30.0,
+    show_default=True,
+    help="Seconds to wait between count-job polls.",
+)
+def plan(project_path: Path, refresh_counts: bool, poll_seconds: float) -> None:
     """Write or refresh the resumable Gaia download plan."""
     project = _load_project_or_die(project_path, "gaia", "gaia_download")
     try:
         summary = plan_gaia_download(
             project,
             refresh_counts=refresh_counts,
+            poll_seconds=poll_seconds,
             echo=click.echo,
         )
     except (ValueError, GaiaCredentialsError) as exc:

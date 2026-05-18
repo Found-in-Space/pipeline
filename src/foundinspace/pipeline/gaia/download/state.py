@@ -363,6 +363,9 @@ class GaiaDownloadState:
             {"state": "deleted_remote", "remote_deleted_at": utc_now_iso()},
         )
 
+    def mark_remote_deleted(self, batch_id: str) -> None:
+        self._update(batch_id, {"remote_deleted_at": utc_now_iso()})
+
     def mark_delete_pending(self, batch_id: str, *, error_message: str) -> None:
         self._update(
             batch_id,

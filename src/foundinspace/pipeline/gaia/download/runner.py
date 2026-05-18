@@ -12,6 +12,7 @@ from foundinspace.pipeline.gaia.download.fieldsets import load_gaia_field_sets
 from foundinspace.pipeline.gaia.download.planner import (
     ANONYMOUS_ROW_CAP,
     DownloadBatch,
+    HealpixCount,
     plan_download_batches,
 )
 from foundinspace.pipeline.gaia.download.query import (
@@ -25,8 +26,8 @@ from foundinspace.pipeline.project import PipelineProject
 
 Echo = Callable[[str], None]
 
-REMOTE_QUOTA_BUDGET_BYTES = 18 * 1024**3
 ANONYMOUS_QUOTA_ERROR = "Filesystem quota exceeded for user anonymous"
+REMOTE_GB = 1_000_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +174,7 @@ def plan_gaia_download(
     *,
     archive_client: GaiaArchiveClient | None = None,
     refresh_counts: bool = False,
+    poll_seconds: float = 30.0,
     echo: Echo = print,
 ) -> PlanSummary:
     spec = query_spec_from_project(project)
@@ -196,11 +198,19 @@ def plan_gaia_download(
             echo(f"Reusing Gaia HEALPix count table from {state.path}")
         else:
             count_access = _count_access_mode(project)
-            echo(f"Submitting Gaia HEALPix count query ({count_access})")
-            counts = archive.run_count_query(
+            count_job_name = (
+                f"fis-gaia-{project.gaia_download.mode}-count-{count_hash[:8]}"
+            )
+            counts = _run_count_query_job(
+                state,
+                archive,
                 count_query,
                 access_mode=count_access,
-                job_name=f"fis-gaia-{project.gaia_download.mode}-count-{count_hash[:8]}",
+                job_name=count_job_name,
+                count_hash=count_hash,
+                refresh_counts=refresh_counts,
+                poll_seconds=poll_seconds,
+                echo=echo,
             )
             state.replace_counts(counts)
             state.set_metadata("count_query_hash", count_hash)
@@ -254,6 +264,74 @@ def plan_gaia_download(
             batch_count=len(batches),
             over_cap_batches=over_cap,
         )
+
+
+def _run_count_query_job(
+    state: GaiaDownloadState,
+    archive: GaiaArchiveClient,
+    query: str,
+    *,
+    access_mode: str,
+    job_name: str,
+    count_hash: str,
+    refresh_counts: bool,
+    poll_seconds: float,
+    echo: Echo,
+) -> list[HealpixCount]:
+    metadata_hash = state.get_metadata("count_query_hash")
+    job_id = state.get_metadata("count_job_id")
+    if refresh_counts or metadata_hash != count_hash:
+        job_id = None
+
+    if job_id:
+        echo(f"Resuming Gaia HEALPix count job_id={job_id} ({access_mode})")
+    else:
+        echo(f"Submitting Gaia HEALPix count query ({access_mode})")
+        job = archive.submit_count_job(
+            query,
+            access_mode=access_mode,
+            job_name=job_name,
+        )
+        job_id = job.job_id
+        state.set_metadata("count_query_hash", count_hash)
+        state.set_metadata("count_job_id", job_id)
+        if job.job_url is not None:
+            state.set_metadata("count_job_url", job.job_url)
+        if job.phase is not None:
+            state.set_metadata("count_job_phase", job.phase)
+        echo(f"Gaia count: submitted job_id={job_id}")
+
+    while True:
+        try:
+            phase = archive.poll_phase(job_id, access_mode=access_mode)
+        except Exception as exc:
+            raise RuntimeError(f"Gaia count job poll failed: {exc}") from exc
+        state.set_metadata("count_job_phase", phase)
+        if phase == "COMPLETED":
+            echo(f"Gaia count: completed upstream job_id={job_id}")
+            counts = archive.fetch_count_results(job_id, access_mode=access_mode)
+            state.replace_counts(counts)
+            if access_mode == "authenticated":
+                try:
+                    archive.delete_job(job_id, access_mode=access_mode)
+                except Exception as exc:
+                    state.set_metadata("count_job_delete_error", str(exc))
+                    echo(f"Gaia count: remote delete failed ({exc})")
+                else:
+                    state.set_metadata("count_job_phase", "deleted_remote")
+                    echo(f"Gaia count: deleted remote job {job_id}")
+            return counts
+        if phase in {"ERROR", "ABORTED"}:
+            error = _friendly_archive_error(
+                archive.job_error(job_id, access_mode=access_mode),
+                access_mode=access_mode,
+            )
+            raise RuntimeError(f"Gaia count job {phase.lower()}: {error}")
+
+        seconds = max(0.0, poll_seconds)
+        wait = f"{seconds:.1f}s" if seconds and seconds < 10 else f"{seconds:.0f}s"
+        echo(f"Gaia count: phase={phase}, waiting {wait}; job_id={job_id}")
+        time.sleep(seconds)
 
 
 def _avoid_finished_batch_id_collisions(
@@ -319,16 +397,21 @@ def run_gaia_download(
                 plan_gaia_download(project, archive_client=archive, echo=echo)
 
             while True:
+                progress = _delete_failed_authenticated(state, archive, echo)
                 batches = state.read_batches()
                 if all(_is_terminal(batch) for batch in batches):
                     break
 
-                progress = False
                 progress |= _delete_pending_authenticated(state, archive, echo)
                 progress |= _download_completed_batches(state, archive, echo)
                 progress |= _poll_submitted_batches(state, archive, echo)
                 if not _has_authenticated_cleanup_pending(state):
-                    progress |= _submit_planned_batches(project, state, archive, echo)
+                    progress |= _submit_planned_batches(
+                        project,
+                        state,
+                        archive,
+                        echo=echo,
+                    )
 
                 if not progress:
                     active = [
@@ -359,6 +442,8 @@ def run_gaia_download(
 
 def _is_terminal(batch: BatchState) -> bool:
     if batch.state == "failed":
+        if batch.access_mode == "authenticated" and batch.job_id:
+            return batch.remote_deleted_at is not None
         return True
     if batch.access_mode == "authenticated":
         return batch.state == "deleted_remote"
@@ -399,12 +484,47 @@ def _delete_pending_authenticated(
     return progress
 
 
+def _delete_failed_authenticated(
+    state: GaiaDownloadState,
+    archive: GaiaArchiveClient,
+    echo: Echo,
+) -> bool:
+    progress = False
+    for batch in state.read_batches():
+        if batch.access_mode != "authenticated":
+            continue
+        if (
+            batch.state != "failed"
+            or not batch.job_id
+            or batch.remote_deleted_at is not None
+        ):
+            continue
+        try:
+            archive.delete_job(batch.job_id, access_mode=batch.access_mode)
+        except Exception as exc:
+            state.mark_failed(
+                batch.batch_id,
+                phase=batch.phase,
+                error_message=f"{batch.error_message or ''} Remote delete failed: {exc}",
+            )
+            echo(f"Gaia {batch.batch_id}: failed remote delete pending ({exc})")
+        else:
+            state.mark_remote_deleted(batch.batch_id)
+            echo(f"Gaia {batch.batch_id}: deleted failed remote job {batch.job_id}")
+            progress = True
+    return progress
+
+
 def _has_authenticated_cleanup_pending(state: GaiaDownloadState) -> bool:
     cleanup_states = {"completed_remote", "downloading", "downloaded", "delete_pending"}
-    return any(
-        batch.access_mode == "authenticated" and batch.state in cleanup_states
-        for batch in state.read_batches()
-    )
+    for batch in state.read_batches():
+        if batch.access_mode != "authenticated":
+            continue
+        if batch.state in cleanup_states:
+            return True
+        if batch.state == "failed" and batch.job_id and batch.remote_deleted_at is None:
+            return True
+    return False
 
 
 def _download_completed_batches(
@@ -514,13 +634,20 @@ def _submit_planned_batches(
     project: PipelineProject,
     state: GaiaDownloadState,
     archive: GaiaArchiveClient,
+    *,
     echo: Echo,
 ) -> bool:
     progress = False
     for batch in state.read_batches():
         if batch.state != "planned":
             continue
-        if not _can_submit_batch(project, state, batch, echo):
+        if not _can_submit_batch(
+            project,
+            state,
+            archive,
+            batch,
+            echo=echo,
+        ):
             continue
         query = batch.query_text_path.read_text(encoding="utf-8")
         batch.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -553,7 +680,9 @@ def _submit_planned_batches(
 def _can_submit_batch(
     project: PipelineProject,
     state: GaiaDownloadState,
+    archive: GaiaArchiveClient,
     batch: BatchState,
+    *,
     echo: Echo,
 ) -> bool:
     if batch.output_path.exists():
@@ -578,9 +707,12 @@ def _can_submit_batch(
     ]
     if len(active) >= project.gaia_download.max_active_jobs:
         return False
-    remote_bytes = sum(item.estimated_result_bytes for item in active)
-    if remote_bytes + batch.estimated_result_bytes > REMOTE_QUOTA_BUDGET_BYTES:
-        return False
+    _check_remote_quota(
+        project,
+        state,
+        archive,
+        batch,
+    )
 
     batch.output_path.parent.mkdir(parents=True, exist_ok=True)
     free_bytes = shutil.disk_usage(batch.output_path.parent).free
@@ -591,6 +723,65 @@ def _can_submit_batch(
             f"free {free_bytes:,}"
         )
     return True
+
+
+def _check_remote_quota(
+    project: PipelineProject,
+    state: GaiaDownloadState,
+    archive: GaiaArchiveClient,
+    batch: BatchState,
+) -> None:
+    storage = archive.remote_async_storage(access_mode=batch.access_mode)
+    local_job_ids = {
+        item.job_id for item in state.read_batches() if item.job_id is not None
+    }
+    external_active_ids = [
+        job_id for job_id in storage.active_job_ids if job_id not in local_job_ids
+    ]
+    if external_active_ids:
+        sample = ", ".join(external_active_ids[:3])
+        suffix = "" if len(external_active_ids) <= 3 else ", ..."
+        raise ValueError(
+            "Gaia remote quota guard cannot estimate active jobs outside this "
+            f"download state: {sample}{suffix}. Wait for or delete those jobs "
+            "before submitting more result jobs."
+        )
+
+    blocking_ids = storage.unknown_result_job_ids + storage.failed_job_ids
+    if blocking_ids:
+        sample = ", ".join(blocking_ids[:3])
+        suffix = "" if len(blocking_ids) <= 3 else ", ..."
+        raise ValueError(
+            "Gaia remote quota guard cannot verify free space while completed "
+            "or failed jobs with unknown storage remain in the account: "
+            f"{sample}{suffix}. Delete those Gaia Archive jobs before retrying."
+        )
+
+    active_estimate = sum(
+        item.estimated_result_bytes
+        for item in state.read_batches()
+        if item.access_mode == "authenticated"
+        and _is_active(item)
+        and (item.job_id is None or item.job_id not in storage.known_result_job_ids)
+    )
+    projected_bytes = (
+        storage.known_result_bytes + active_estimate + batch.estimated_result_bytes
+    )
+    free_after = project.gaia_download.remote_quota_bytes - projected_bytes
+    if free_after < project.gaia_download.remote_min_free_bytes:
+        raise ValueError(
+            "Gaia remote quota guard blocked submission: "
+            f"known remote results {_format_bytes(storage.known_result_bytes)}, "
+            f"active estimate {_format_bytes(active_estimate)}, "
+            f"next batch estimate {_format_bytes(batch.estimated_result_bytes)}, "
+            f"quota {_format_bytes(project.gaia_download.remote_quota_bytes)}, "
+            f"free after submit {_format_bytes(free_after)}, required free "
+            f"{_format_bytes(project.gaia_download.remote_min_free_bytes)}."
+        )
+
+
+def _format_bytes(value: int) -> str:
+    return f"{value / REMOTE_GB:.2f} GB"
 
 
 def _verify_votable_gzip(path: Path) -> None:

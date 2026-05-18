@@ -6,7 +6,10 @@ from pathlib import Path
 from click.testing import CliRunner
 
 import foundinspace.pipeline.gaia.download.runner as runner_module
-from foundinspace.pipeline.gaia.download.archive import ArchiveJobInfo
+from foundinspace.pipeline.gaia.download.archive import (
+    ArchiveJobInfo,
+    RemoteStorageInfo,
+)
 from foundinspace.pipeline.gaia.download.cli import cli as download_cli
 from foundinspace.pipeline.gaia.download.planner import HealpixCount
 from foundinspace.pipeline.gaia.download.runner import (
@@ -22,11 +25,27 @@ from foundinspace.pipeline.project import load_project
 
 class _FakeArchive:
     def __init__(self) -> None:
+        self.count_submitted: list[str] = []
         self.submitted: list[str] = []
         self.deleted: list[str] = []
+        self.remote_storage = RemoteStorageInfo(
+            known_result_bytes=0,
+            known_result_job_ids=frozenset(),
+            unknown_result_job_ids=(),
+            active_job_ids=(),
+            failed_job_ids=(),
+        )
 
-    def run_count_query(self, query: str, *, access_mode: str, job_name: str):
+    def submit_count_job(self, query: str, *, access_mode: str, job_name: str):
         assert "COUNT(*) AS n" in query
+        job_id = f"count-job-{len(self.count_submitted) + 1}"
+        self.count_submitted.append(job_id)
+        return ArchiveJobInfo(
+            job_id=job_id, job_url=f"https://example.test/{job_id}", phase="PENDING"
+        )
+
+    def fetch_count_results(self, job_id: str, *, access_mode: str):
+        assert job_id.startswith("count-job-")
         return [HealpixCount(5, 100), HealpixCount(4, 200)]
 
     def submit_download_job(self, query: str, *, job_name: str, access_mode: str):
@@ -50,6 +69,9 @@ class _FakeArchive:
     def delete_job(self, job_id: str, *, access_mode: str):
         self.deleted.append(job_id)
 
+    def remote_async_storage(self, *, access_mode: str):
+        return self.remote_storage
+
 
 class _SlowArchive(_FakeArchive):
     def __init__(self) -> None:
@@ -57,6 +79,8 @@ class _SlowArchive(_FakeArchive):
         self.phases = ["EXECUTING", "EXECUTING", "COMPLETED"]
 
     def poll_phase(self, job_id: str, *, access_mode: str):
+        if job_id.startswith("count-job-"):
+            return "COMPLETED"
         return self.phases.pop(0)
 
 
@@ -66,18 +90,34 @@ class _DeleteFailsArchive(_FakeArchive):
         raise RuntimeError("temporary delete failure")
 
 
+class _ErrorArchive(_FakeArchive):
+    def poll_phase(self, job_id: str, *, access_mode: str):
+        if job_id.startswith("count-job-"):
+            return "COMPLETED"
+        return "ERROR"
+
+    def job_error(self, job_id: str, *, access_mode: str):
+        return "archive failed"
+
+
 def _write_project(
     tmp_path: Path,
     *,
     mode: str = "small",
     access: str = "auto",
     source_where_adql: str | None = None,
+    remote_quota_bytes: int | None = None,
 ) -> Path:
     project_path = tmp_path / "project.toml"
     mag_limit = "mag_limit = 9.0\n" if mode == "small" else ""
     source_where = (
         f'source_where_adql = """\n{source_where_adql}\n"""\n'
         if source_where_adql is not None
+        else ""
+    )
+    remote_quota = (
+        f"remote_quota_bytes = {remote_quota_bytes}\n"
+        if remote_quota_bytes is not None
         else ""
     )
     project_path.write_text(
@@ -95,6 +135,7 @@ access = "{access}"
 {mag_limit}state_db = "data/processed/gaia-download.sqlite"
 row_cap = 1000
 max_active_jobs = 2
+{remote_quota}remote_min_free_bytes = 5000000000
 {source_where}\
 carry_field_sets = ["motion", "mass"]
 
@@ -130,7 +171,12 @@ def test_plan_and_run_small_anonymous_download_with_fake_archive(
     project = load_project(_write_project(tmp_path))
     archive = _FakeArchive()
 
-    plan = plan_gaia_download(project, archive_client=archive, echo=lambda _msg: None)
+    plan = plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
     run = run_gaia_download(
         project,
         archive_client=archive,
@@ -140,6 +186,7 @@ def test_plan_and_run_small_anonymous_download_with_fake_archive(
 
     assert plan.access_mode == "anonymous"
     assert plan.batch_count == 1
+    assert archive.count_submitted == ["count-job-1"]
     assert len(archive.submitted) == 1
     assert run.downloaded_batches == 1
     assert sorted(project.gaia.input_dir.glob("*.vot.gz"))
@@ -151,7 +198,12 @@ def test_authenticated_run_deletes_remote_job_after_download(tmp_path: Path) -> 
     )
     archive = _FakeArchive()
 
-    plan = plan_gaia_download(project, archive_client=archive, echo=lambda _msg: None)
+    plan = plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
     run = run_gaia_download(
         project,
         archive_client=archive,
@@ -161,7 +213,7 @@ def test_authenticated_run_deletes_remote_job_after_download(tmp_path: Path) -> 
 
     assert plan.access_mode == "authenticated"
     assert run.deleted_remote_batches == 1
-    assert archive.deleted == ["job-1"]
+    assert archive.deleted == ["count-job-1", "job-1"]
 
 
 def test_authenticated_delete_pending_is_retried_on_resume(
@@ -177,7 +229,12 @@ def test_authenticated_delete_pending_is_retried_on_resume(
     def interrupt_sleep(_seconds: float) -> None:
         raise KeyboardInterrupt
 
-    plan_gaia_download(project, archive_client=failing_archive, echo=lambda _msg: None)
+    plan_gaia_download(
+        project,
+        archive_client=failing_archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
     monkeypatch.setattr(runner_module.time, "sleep", interrupt_sleep)
     try:
         run_gaia_download(
@@ -210,12 +267,157 @@ def test_authenticated_delete_pending_is_retried_on_resume(
     assert resume_archive.submitted == []
 
 
+def test_authenticated_error_job_is_deleted_before_terminal(
+    tmp_path: Path,
+) -> None:
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
+    archive = _ErrorArchive()
+    messages: list[str] = []
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    summary = run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=messages.append,
+    )
+
+    assert summary.failed_batches == 1
+    assert archive.deleted == ["count-job-1", "job-1"]
+    assert any("deleted failed remote job job-1" in message for message in messages)
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batch = state.read_batches()[0]
+    assert batch.state == "failed"
+    assert batch.remote_deleted_at is not None
+
+
+def test_authenticated_remote_quota_guard_blocks_insufficient_quota(
+    tmp_path: Path,
+) -> None:
+    project = load_project(
+        _write_project(
+            tmp_path,
+            mode="full",
+            access="authenticated",
+            remote_quota_bytes=5_000_010_000,
+        )
+    )
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    try:
+        run_gaia_download(
+            project,
+            archive_client=archive,
+            poll_seconds=0,
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "Gaia remote quota guard blocked submission" in str(exc)
+        assert "required free 5.00 GB" in str(exc)
+    else:  # pragma: no cover - protects the guard against accidental removal
+        raise AssertionError("Expected remote quota guard to block submission")
+    assert archive.submitted == []
+
+
+def test_authenticated_remote_quota_guard_blocks_external_active_jobs(
+    tmp_path: Path,
+) -> None:
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
+    archive = _FakeArchive()
+    archive.remote_storage = RemoteStorageInfo(
+        known_result_bytes=0,
+        known_result_job_ids=frozenset(),
+        unknown_result_job_ids=(),
+        active_job_ids=("external-running",),
+        failed_job_ids=(),
+    )
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    try:
+        run_gaia_download(
+            project,
+            archive_client=archive,
+            poll_seconds=0,
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "active jobs outside this download state" in str(exc)
+        assert "external-running" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected external active jobs to block submission")
+    assert archive.submitted == []
+
+
+def test_authenticated_remote_quota_guard_blocks_failed_remote_jobs(
+    tmp_path: Path,
+) -> None:
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
+    archive = _FakeArchive()
+    archive.remote_storage = RemoteStorageInfo(
+        known_result_bytes=0,
+        known_result_job_ids=frozenset(),
+        unknown_result_job_ids=(),
+        active_job_ids=(),
+        failed_job_ids=("external-failed",),
+    )
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    try:
+        run_gaia_download(
+            project,
+            archive_client=archive,
+            poll_seconds=0,
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "unknown storage remain" in str(exc)
+        assert "external-failed" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected failed remote jobs to block submission")
+    assert archive.submitted == []
+
+
 def test_run_echoes_wait_status_when_poll_phase_is_unchanged(tmp_path: Path) -> None:
     project = load_project(_write_project(tmp_path))
     archive = _SlowArchive()
     messages: list[str] = []
 
-    plan_gaia_download(project, archive_client=archive, echo=lambda _msg: None)
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
     run_gaia_download(
         project,
         archive_client=archive,
@@ -226,6 +428,35 @@ def test_run_echoes_wait_status_when_poll_phase_is_unchanged(tmp_path: Path) -> 
     assert any("phase=EXECUTING" in message for message in messages)
     assert any("waiting 0s before next poll" in message for message in messages)
     assert any("job_id=job-1" in message for message in messages)
+
+
+def test_plan_resumes_background_count_job(tmp_path: Path) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _FakeArchive()
+    messages: list[str] = []
+
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        state.set_metadata("count_query_hash", "stale")
+        state.set_metadata("count_job_id", "count-job-stale")
+
+    first = plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=messages.append,
+    )
+    assert first.batch_count == 1
+    assert archive.count_submitted == ["count-job-1"]
+
+    second = plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=messages.append,
+    )
+    assert second.batch_count == 1
+    assert archive.count_submitted == ["count-job-1"]
+    assert any("Reusing Gaia HEALPix count table" in message for message in messages)
 
 
 def test_write_browser_queries_for_small_profile(tmp_path: Path) -> None:

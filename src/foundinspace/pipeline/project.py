@@ -30,6 +30,8 @@ _GAIA_DOWNLOAD_KEYS = {
     "state_db",
     "row_cap",
     "max_active_jobs",
+    "remote_quota_bytes",
+    "remote_min_free_bytes",
     "carry_field_sets",
 }
 _GAIA_TO_HIP_KEYS = {"download_ecsv", "output_parquet"}
@@ -48,6 +50,8 @@ GAIA_DOWNLOAD_MODES = ("small", "full")
 GAIA_DOWNLOAD_ACCESS_MODES = ("auto", "anonymous", "authenticated")
 GAIA_DOWNLOAD_DEFAULT_ROW_CAP = 55_000_000
 GAIA_DOWNLOAD_DEFAULT_MAX_ACTIVE_JOBS = 4
+GAIA_DOWNLOAD_DEFAULT_REMOTE_QUOTA_BYTES = 20_000_000_000
+GAIA_DOWNLOAD_DEFAULT_REMOTE_MIN_FREE_BYTES = 5_000_000_000
 GAIA_DOWNLOAD_DEFAULT_CARRY_FIELD_SETS: tuple[str, ...] = ()
 
 
@@ -276,6 +280,26 @@ class GaiaDownloadConfig(_SectionAccessor):
         )
         if value <= 0:
             raise ValueError("gaia_download.max_active_jobs must be > 0")
+        return value
+
+    @property
+    def remote_quota_bytes(self) -> int:
+        value = self._optional_int_field(
+            "remote_quota_bytes",
+            GAIA_DOWNLOAD_DEFAULT_REMOTE_QUOTA_BYTES,
+        )
+        if value <= 0:
+            raise ValueError("gaia_download.remote_quota_bytes must be > 0")
+        return value
+
+    @property
+    def remote_min_free_bytes(self) -> int:
+        value = self._optional_int_field(
+            "remote_min_free_bytes",
+            GAIA_DOWNLOAD_DEFAULT_REMOTE_MIN_FREE_BYTES,
+        )
+        if value < 0:
+            raise ValueError("gaia_download.remote_min_free_bytes must be >= 0")
         return value
 
     @property

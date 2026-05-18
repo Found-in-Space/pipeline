@@ -79,15 +79,17 @@ VOTable gzip, and place it under `[gaia] input_dir`.
 
 ## 4. Plan The Download
 
-Scripted downloads always start with a HEALPix level-3 count query:
+Scripted downloads always start with a background Gaia async HEALPix level-3
+count query:
 
 ```bash
 uv run fis-pipeline gaia download plan --project project-small.toml
 ```
 
 The count query validates the generated source query and gives exact row counts
-before result jobs are submitted. The planner stores counts, batch membership,
-query hashes, output paths, and job-ready ADQL in `[gaia_download].state_db`.
+before result jobs are submitted. The planner stores the count job id while it
+is running, then stores counts, batch membership, query hashes, output paths,
+and job-ready ADQL in `[gaia_download].state_db`.
 It also writes the exact local ADQL files used for the run beside the state DB:
 `count.adql` and one `<batch>.adql` file per download batch.
 
@@ -122,13 +124,28 @@ The runner records Gaia async job IDs immediately after submission. During long
 waits it prints a polling heartbeat with the active job ID, phase, local state,
 and expected rows.
 
+Before submitting each authenticated result job, the runner inspects the Gaia
+Archive account's async jobs, counts known completed result sizes even when
+those jobs were not created by this pipeline state DB, and combines that with
+the planner's estimated size for active and next batches. Submission is blocked
+unless the projected Gaia Archive result usage leaves at least
+`[gaia_download].remote_min_free_bytes` free under
+`[gaia_download].remote_quota_bytes`, which defaults to Gaia's standard 20 GB
+job-result quota and can be raised for accounts with increased quota. External
+active jobs also block submission because Gaia does not reserve result storage
+until they complete. Failed or unknown-size remote jobs block submission because
+Gaia can report them as `0 bytes` while they still consume file quota; delete
+those jobs before retrying.
+
 If you interrupt with `Ctrl-C`, rerun the same command. It reloads the SQLite
 state, resumes polling by job ID, downloads completed results, and continues.
 
 For authenticated runs, remote deletion is part of success. If a local download
 succeeds but deleting the Gaia Archive result fails, the batch remains
 `delete_pending`. A resumed run retries those deletes before submitting more
-jobs so the Gaia account quota is not silently consumed.
+jobs so the Gaia account quota is not silently consumed. Failed authenticated
+jobs are also deleted before the batch is considered terminal, because failed
+Archive jobs can still consume file quota.
 
 ## 6. Build Gaia Staging
 
