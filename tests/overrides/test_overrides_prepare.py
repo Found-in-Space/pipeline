@@ -47,3 +47,25 @@ def test_prepare_overrides_parquet_roundtrip(tmp_path: Path):
     assert len(pdf) >= 1
     for col in OUTPUT_COLS:
         assert col in pdf.columns
+
+
+def test_build_overrides_dataframe_uses_explicit_source_paths_only(tmp_path: Path):
+    source = tmp_path / "release-overrides.yaml"
+    source.write_text(
+        (
+            "stars:\n"
+            "  - override_id: release.test.drop.v1\n"
+            "    action: drop\n"
+            "    source: hip\n"
+            "    source_id: 123\n"
+            "    override_reason: test\n"
+            "    override_policy_version: test\n"
+        ),
+        encoding="utf-8",
+    )
+
+    df = build_overrides_dataframe(source_paths=(source,))
+
+    assert df["override_id"].tolist() == ["release.test.drop.v1"]
+    assert df["source"].tolist() == ["hip"]
+    assert df["source_id"].tolist() == ["123"]

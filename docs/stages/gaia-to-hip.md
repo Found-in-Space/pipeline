@@ -9,6 +9,9 @@ Hipparcos rows.
 
 - Gaia DR3 `gaiadr3.hipparcos2_best_neighbour`, downloaded automatically when
   missing.
+- Optional explicit `[gaia-to-hip] supplemental_parquets` entries. These are
+  appended to the official Gaia map and validated as a one-to-one combined
+  crossmatch.
 
 ## Command
 

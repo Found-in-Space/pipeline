@@ -229,11 +229,24 @@ def plan_gaia_download(
 
         total_rows = sum(count.count for count in counts if not count.downloaded)
         access_mode = _resolve_access_mode(project, total_rows)
+        effective_row_cap = _effective_authenticated_row_cap(
+            project,
+            access_mode=access_mode,
+        )
+        if effective_row_cap < project.gaia_download.row_cap:
+            echo(
+                "Gaia download row cap reduced by remote quota estimate: "
+                f"configured={project.gaia_download.row_cap:,}, "
+                f"effective={effective_row_cap:,}, "
+                f"bytes_per_row={project.gaia_download.remote_result_bytes_per_row:,}, "
+                "max_result_bytes_per_job="
+                f"{_format_bytes(project.gaia_download.remote_max_result_bytes_per_job)}"
+            )
         batches = plan_download_batches(
             counts,
             mode=project.gaia_download.mode,
             access_mode=access_mode,
-            row_cap=project.gaia_download.row_cap,
+            row_cap=effective_row_cap,
         )
         batches = _avoid_finished_batch_id_collisions(batches, state.read_batches())
 
@@ -258,6 +271,7 @@ def plan_gaia_download(
             access_mode=access_mode,
             query_hashes=query_hashes,
             job_names=job_names,
+            estimated_result_bytes_per_row=project.gaia_download.remote_result_bytes_per_row,
         )
 
         over_cap = sum(1 for batch in batches if batch.over_cap)
@@ -274,6 +288,33 @@ def plan_gaia_download(
             batch_count=len(batches),
             over_cap_batches=over_cap,
         )
+
+
+def _effective_authenticated_row_cap(
+    project: PipelineProject,
+    *,
+    access_mode: str,
+) -> int:
+    configured_cap = project.gaia_download.row_cap
+    if access_mode != "authenticated":
+        return configured_cap
+
+    bytes_per_row = project.gaia_download.remote_result_bytes_per_row
+    remote_budget = (
+        project.gaia_download.remote_quota_bytes
+        - project.gaia_download.remote_min_free_bytes
+    )
+    if remote_budget <= 0:
+        raise ValueError(
+            "gaia_download.remote_quota_bytes must exceed "
+            "gaia_download.remote_min_free_bytes"
+        )
+    row_caps = [
+        configured_cap,
+        project.gaia_download.remote_max_result_bytes_per_job // bytes_per_row,
+        remote_budget // bytes_per_row,
+    ]
+    return max(1, min(int(cap) for cap in row_caps))
 
 
 def _run_count_query_job(

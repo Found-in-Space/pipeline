@@ -9,6 +9,8 @@ from typing import Any
 
 from foundinspace.pipeline.gaia.download.planner import DownloadBatch, HealpixCount
 
+DEFAULT_ESTIMATED_RESULT_BYTES_PER_ROW = 400
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -156,6 +158,7 @@ class GaiaDownloadState:
         access_mode: str,
         query_hashes: dict[str, str],
         job_names: dict[str, str],
+        estimated_result_bytes_per_row: int = DEFAULT_ESTIMATED_RESULT_BYTES_PER_ROW,
     ) -> None:
         valid_ids = {batch.batch_id for batch in batches}
         for batch in batches:
@@ -164,7 +167,10 @@ class GaiaDownloadState:
                 (batch.batch_id,),
             ).fetchone()
             hp3_json = json.dumps(list(batch.hp3_values), separators=(",", ":"))
-            estimate = estimate_result_bytes(batch.expected_rows)
+            estimate = estimate_result_bytes(
+                batch.expected_rows,
+                bytes_per_row=estimated_result_bytes_per_row,
+            )
             if (
                 existing is not None
                 and existing["query_hash"] == query_hashes[batch.batch_id]
@@ -433,10 +439,14 @@ class GaiaDownloadState:
         self._conn.commit()
 
 
-def estimate_result_bytes(expected_rows: int) -> int:
+def estimate_result_bytes(
+    expected_rows: int,
+    *,
+    bytes_per_row: int = DEFAULT_ESTIMATED_RESULT_BYTES_PER_ROW,
+) -> int:
     # A deliberately coarse gzip-VOTable estimate. It is for scheduling guard
     # rails only; the completed local file size is recorded after download.
-    return int(expected_rows) * 80
+    return int(expected_rows) * int(bytes_per_row)
 
 
 def sqlite3_retry_increment(state: GaiaDownloadState, batch_id: str) -> int:

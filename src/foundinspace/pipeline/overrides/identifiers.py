@@ -48,10 +48,17 @@ def _row_for_override_identifiers(star: dict[str, Any]) -> dict[str, Any] | None
     return row
 
 
-def build_override_identifier_rows(data_dir: Path | None = None) -> pd.DataFrame:
+def build_override_identifier_rows(
+    data_dir: Path | None = None,
+    *,
+    source_paths: tuple[Path, ...] | None = None,
+) -> pd.DataFrame:
     """Return identifier rows declared in override YAML documents."""
     rows: list[dict[str, Any]] = []
-    for doc in load_parsed_override_documents(data_dir=data_dir):
+    for doc in load_parsed_override_documents(
+        data_dir=data_dir,
+        source_paths=source_paths,
+    ):
         stars = doc.get("stars")
         if not isinstance(stars, list):
             continue

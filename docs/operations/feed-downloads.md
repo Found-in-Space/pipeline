@@ -59,6 +59,8 @@ uv run fis-pipeline overrides build --project project.toml
 
 By default this uses packaged curated YAML files. Set `[overrides].data_dir` in
 the project file only when working with a separate local override directory.
+Set `[overrides].source_paths` for release builds that need to list exact YAML
+inputs instead of scanning a directory.
 
 ## 5. Gaia
 

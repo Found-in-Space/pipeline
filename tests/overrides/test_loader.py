@@ -20,6 +20,19 @@ def test_iter_override_source_files_returns_sorted_yaml_only(tmp_path: Path):
     assert names == ["a.yml", "z.yaml"]
 
 
+def test_iter_override_source_files_uses_explicit_paths_in_given_order(
+    tmp_path: Path,
+):
+    first = tmp_path / "first.yaml"
+    second = tmp_path / "second.yaml"
+    first.write_text("stars: []\n", encoding="utf-8")
+    second.write_text("stars: []\n", encoding="utf-8")
+
+    files = iter_override_source_files(source_paths=(second, first))
+
+    assert files == [second, first]
+
+
 def test_load_override_source_texts_reads_packaged_yaml():
     sources = load_override_source_texts()
     assert "sun.yaml" in sources

@@ -148,6 +148,8 @@ row_cap = 123
 max_active_jobs = 2
 remote_quota_bytes = 30000000000
 remote_min_free_bytes = 5000000000
+remote_result_bytes_per_row = 900
+remote_max_result_bytes_per_job = 4000000000
 carry_field_sets = ["motion", "mass"]
 source_where_adql = '''
 g.phot_g_mean_mag <= 15
@@ -171,12 +173,72 @@ OR d.r_med_geo <= 100
     assert project.gaia_download.max_active_jobs == 2
     assert project.gaia_download.remote_quota_bytes == 30_000_000_000
     assert project.gaia_download.remote_min_free_bytes == 5_000_000_000
+    assert project.gaia_download.remote_result_bytes_per_row == 900
+    assert project.gaia_download.remote_max_result_bytes_per_job == 4_000_000_000
     assert project.gaia_download.carry_field_sets == ("motion", "mass")
     assert (
         project.gaia_download.source_where_adql
         == "g.phot_g_mean_mag <= 15\nOR d.r_med_geo <= 100"
     )
     assert project.merge.sidecar_output_dir == tmp_path / "data/processed/sidecars"
+
+
+def test_load_project_resolves_explicit_crossmatch_and_override_paths(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text()
+        .replace(
+            'output_parquet = "data/processed/gaia_hip_map.parquet"\n',
+            (
+                'output_parquet = "data/processed/gaia_hip_map.parquet"\n'
+                'supplemental_parquets = ["../../publications/20260515.1/catalog/fis_gaia_hip_supplemental_display_map.parquet"]\n'
+            ),
+            1,
+        )
+        .replace(
+            '[overrides]\noutput_parquet = "data/processed/overrides.parquet"\n',
+            (
+                "[overrides]\n"
+                'output_parquet = "data/processed/overrides.parquet"\n'
+                'source_paths = ["overrides/sun.yaml", "overrides/alpha_cen.yaml"]\n'
+            ),
+        ),
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    assert project.gaia_to_hip.supplemental_parquets == (
+        tmp_path
+        / "../../publications/20260515.1/catalog/fis_gaia_hip_supplemental_display_map.parquet",
+    )
+    assert project.overrides.source_paths == (
+        tmp_path / "overrides/sun.yaml",
+        tmp_path / "overrides/alpha_cen.yaml",
+    )
+
+
+def test_load_project_rejects_override_data_dir_with_source_paths(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text().replace(
+            '[overrides]\noutput_parquet = "data/processed/overrides.parquet"\n',
+            (
+                "[overrides]\n"
+                'output_parquet = "data/processed/overrides.parquet"\n'
+                'data_dir = "overrides"\n'
+                'source_paths = ["overrides/sun.yaml"]\n'
+            ),
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        load_project(project_path)
 
 
 def test_load_project_gaia_download_defaults_to_no_carry_fields(tmp_path: Path) -> None:
@@ -198,6 +260,8 @@ state_db = "data/processed/gaia-download.sqlite"
     assert project.gaia_download.source_where_adql is None
     assert project.gaia_download.remote_quota_bytes == 20_000_000_000
     assert project.gaia_download.remote_min_free_bytes == 5_000_000_000
+    assert project.gaia_download.remote_result_bytes_per_row == 400
+    assert project.gaia_download.remote_max_result_bytes_per_job == 5_000_000_000
 
 
 def test_load_project_gaia_download_rejects_source_where_semicolon(
@@ -443,6 +507,14 @@ def test_render_project_template_small_profile_sets_mag_limit() -> None:
     assert parsed["gaia_download"]["mag_limit"] == 9.0
     assert parsed["gaia_download"]["carry_field_sets"] == []
     assert parsed["merge"]["output_dir"] == "data/processed/merged-small"
+
+
+def test_render_project_template_full_profile_uses_core_gaia_fields() -> None:
+    parsed = tomllib.loads(render_project_template(profile="full"))
+
+    assert parsed["gaia_download"]["mode"] == "full"
+    assert parsed["gaia_download"]["carry_field_sets"] == []
+    assert parsed["gaia_download"]["remote_result_bytes_per_row"] == 400
 
 
 def test_render_project_template_rejects_unknown_profile() -> None:

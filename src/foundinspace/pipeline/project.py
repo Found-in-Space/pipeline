@@ -32,9 +32,11 @@ _GAIA_DOWNLOAD_KEYS = {
     "max_active_jobs",
     "remote_quota_bytes",
     "remote_min_free_bytes",
+    "remote_result_bytes_per_row",
+    "remote_max_result_bytes_per_job",
     "carry_field_sets",
 }
-_GAIA_TO_HIP_KEYS = {"download_ecsv", "output_parquet"}
+_GAIA_TO_HIP_KEYS = {"download_ecsv", "output_parquet", "supplemental_parquets"}
 _HIP_KEYS = {"download_ecsv", "output_parquet"}
 _IDENTIFIERS_KEYS = {
     "hip_hd_ecsv",
@@ -42,7 +44,7 @@ _IDENTIFIERS_KEYS = {
     "iv27a_proper_names_ecsv",
     "output_parquet",
 }
-_OVERRIDES_KEYS = {"output_parquet", "data_dir"}
+_OVERRIDES_KEYS = {"output_parquet", "data_dir", "source_paths"}
 _MERGE_KEYS = {"output_dir", "healpix_order", "sidecar_output_dir"}
 _DIST_NAME = "found-in-space-pipeline"
 
@@ -52,6 +54,8 @@ GAIA_DOWNLOAD_DEFAULT_ROW_CAP = 55_000_000
 GAIA_DOWNLOAD_DEFAULT_MAX_ACTIVE_JOBS = 4
 GAIA_DOWNLOAD_DEFAULT_REMOTE_QUOTA_BYTES = 20_000_000_000
 GAIA_DOWNLOAD_DEFAULT_REMOTE_MIN_FREE_BYTES = 5_000_000_000
+GAIA_DOWNLOAD_DEFAULT_REMOTE_RESULT_BYTES_PER_ROW = 400
+GAIA_DOWNLOAD_DEFAULT_REMOTE_MAX_RESULT_BYTES_PER_JOB = 5_000_000_000
 GAIA_DOWNLOAD_DEFAULT_CARRY_FIELD_SETS: tuple[str, ...] = ()
 
 
@@ -132,6 +136,31 @@ class _SectionAccessor:
         return _resolve_path(
             self._project_dir, value, field_name=f"{self._section}.{key}"
         )
+
+    def _optional_path_list(self, key: str) -> tuple[Path, ...] | None:
+        if self._raw is None or key not in self._raw:
+            return None
+        value = self._raw.get(key)
+        if not isinstance(value, list):
+            raise ValueError(f"{self._section}.{key} must be a list of paths")
+        out: list[Path] = []
+        seen: set[str] = set()
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError(f"{self._section}.{key} must be a list of paths")
+            resolved = _resolve_path(
+                self._project_dir,
+                item.strip(),
+                field_name=f"{self._section}.{key}",
+            )
+            duplicate_key = str(resolved)
+            if duplicate_key in seen:
+                raise ValueError(
+                    f"{self._section}.{key} contains duplicate path {item!r}"
+                )
+            seen.add(duplicate_key)
+            out.append(resolved)
+        return tuple(out)
 
     def _require_int_field(self, key: str) -> int:
         if self._raw is None:
@@ -303,6 +332,28 @@ class GaiaDownloadConfig(_SectionAccessor):
         return value
 
     @property
+    def remote_result_bytes_per_row(self) -> int:
+        value = self._optional_int_field(
+            "remote_result_bytes_per_row",
+            GAIA_DOWNLOAD_DEFAULT_REMOTE_RESULT_BYTES_PER_ROW,
+        )
+        if value <= 0:
+            raise ValueError("gaia_download.remote_result_bytes_per_row must be > 0")
+        return value
+
+    @property
+    def remote_max_result_bytes_per_job(self) -> int:
+        value = self._optional_int_field(
+            "remote_max_result_bytes_per_job",
+            GAIA_DOWNLOAD_DEFAULT_REMOTE_MAX_RESULT_BYTES_PER_JOB,
+        )
+        if value <= 0:
+            raise ValueError(
+                "gaia_download.remote_max_result_bytes_per_job must be > 0"
+            )
+        return value
+
+    @property
     def carry_field_sets(self) -> tuple[str, ...]:
         return self._optional_str_list(
             "carry_field_sets",
@@ -318,6 +369,10 @@ class GaiaToHipConfig(_SectionAccessor):
     @property
     def output_parquet(self) -> Path:
         return self._require_path("output_parquet")
+
+    @property
+    def supplemental_parquets(self) -> tuple[Path, ...]:
+        return self._optional_path_list("supplemental_parquets") or ()
 
 
 class HipConfig(_SectionAccessor):
@@ -356,6 +411,10 @@ class OverridesConfig(_SectionAccessor):
     @property
     def data_dir(self) -> Path | None:
         return self._optional_path("data_dir")
+
+    @property
+    def source_paths(self) -> tuple[Path, ...] | None:
+        return self._optional_path_list("source_paths")
 
 
 class MergeConfig(_SectionAccessor):
@@ -450,6 +509,15 @@ def load_project(project_path: Path) -> PipelineProject:
     identifiers_raw = _validate_section(raw, "identifiers", _IDENTIFIERS_KEYS)
     overrides_raw = _validate_section(raw, "overrides", _OVERRIDES_KEYS)
     merge_raw = _validate_section(raw, "merge", _MERGE_KEYS)
+
+    if (
+        overrides_raw is not None
+        and "data_dir" in overrides_raw
+        and "source_paths" in overrides_raw
+    ):
+        raise ValueError(
+            "overrides.data_dir and overrides.source_paths are mutually exclusive"
+        )
 
     return PipelineProject(
         project_path=resolved_project_path,

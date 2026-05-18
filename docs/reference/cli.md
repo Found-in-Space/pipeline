@@ -45,6 +45,11 @@ uv run fis-pipeline identifiers build --project project.toml [--force]
 uv run fis-pipeline overrides build --project project.toml [--force]
 ```
 
+`gaia-to-hip build` writes the official Gaia-HIP map plus any explicit
+`[gaia-to-hip] supplemental_parquets`. `overrides build` reads explicit
+`[overrides] source_paths` when configured; otherwise it keeps the packaged or
+directory-scanned behavior.
+
 ## Merge
 
 ```bash

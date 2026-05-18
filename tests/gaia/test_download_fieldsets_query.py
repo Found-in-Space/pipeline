@@ -68,6 +68,35 @@ def test_download_query_can_omit_healpix_filter_for_browser_export() -> None:
     assert "g.ref_epoch AS ref_epoch" in query
 
 
+def test_download_query_core_astrophysical_fields_match_active_pipeline() -> None:
+    spec = GaiaQuerySpec(mode="full", mag_limit=None, carry_fields=())
+
+    query = build_download_query(spec, hp3_values=(1,))
+
+    for field_name in (
+        "mg_gspphot",
+        "mg_gspphot_lower",
+        "mg_gspphot_upper",
+        "ag_gspphot",
+        "teff_esphs",
+        "teff_gspspec",
+        "teff_espucd",
+        "teff_gspphot",
+    ):
+        assert f"ap.{field_name} AS {field_name}" in query
+
+    for field_name in (
+        "teff_gspphot_lower",
+        "teff_gspphot_upper",
+        "logg_esphs",
+        "logg_gspspec",
+        "logg_gspphot",
+        "logg_gspphot_lower",
+        "logg_gspphot_upper",
+    ):
+        assert field_name not in query
+
+
 def test_source_where_adql_is_added_to_count_and_download_queries() -> None:
     source_filter = """
     g.phot_g_mean_mag <= 15

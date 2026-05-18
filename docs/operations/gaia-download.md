@@ -39,9 +39,9 @@ carry_field_sets = []
 fits the anonymous cap. If the query is too large, the downloader switches to
 authenticated access.
 
-The small profile uses core Gaia pipeline fields only. The full profile has no
-magnitude limit and explicitly enables the enriched `motion` and `mass` carry
-field sets.
+The checked-in profiles use core Gaia pipeline fields only. Enriched `motion`,
+`mass`, or other carry field sets should be enabled explicitly by release
+projects that intend to produce those sidecars.
 
 For unattended authenticated runs, set one of:
 
@@ -109,8 +109,10 @@ The fragment is appended to both count and download queries, so the generated
 `.adql` files are the provenance record to carry into a catalog release.
 
 Small runs normally produce one all-sky magnitude-limited batch. Full runs use
-deterministic HEALPix batch packing under `[gaia_download].row_cap`, with
-one-tile over-cap batches recorded explicitly.
+deterministic HEALPix batch packing under `[gaia_download].row_cap`, then cap
+authenticated batches further with `[gaia_download].remote_result_bytes_per_row`
+and `[gaia_download].remote_max_result_bytes_per_job`. One-tile over-cap
+batches are recorded explicitly.
 
 ## 5. Run Or Resume
 
@@ -181,7 +183,7 @@ When Gaia carry-through fields are configured, it also writes merge-aligned
 sidecars under `[merge].sidecar_output_dir` or, if omitted, a `sidecars`
 directory beside `[merge].output_dir`.
 
-The full profile's Gaia carry field sets produce:
+Configured Gaia carry field sets may produce:
 
 ```text
 gaia_enrichment/

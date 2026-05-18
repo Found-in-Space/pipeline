@@ -15,11 +15,14 @@ max_active_jobs = 4
 # account has increased quota.
 # remote_quota_bytes = 20000000000
 remote_min_free_bytes = 5000000000
-carry_field_sets = ["motion", "mass"]
+remote_result_bytes_per_row = 400
+remote_max_result_bytes_per_job = 5000000000
+carry_field_sets = []
 
 [gaia-to-hip]
 download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"
 output_parquet = "data/processed/gaia_hip_map.parquet"
+# supplemental_parquets = ["path/to/supplemental_gaia_hip_map.parquet"]
 
 [hip]
 download_ecsv = "data/catalogs/hipparcos2.ecsv"
@@ -34,6 +37,7 @@ output_parquet = "data/processed/identifiers_map.parquet"
 [overrides]
 output_parquet = "data/processed/overrides.parquet"
 # data_dir = "path/to/overrides"
+# source_paths = ["path/to/override.yaml"]
 
 [merge]
 output_dir = "data/processed/merged"

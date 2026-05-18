@@ -40,20 +40,56 @@ def _default_data_dir() -> Path:
     return _PACKAGE_DATA_DIR
 
 
-def iter_override_source_files(data_dir: Path | None = None) -> list[Path]:
+def _explicit_yaml_paths(source_paths: Iterable[Path]) -> list[Path]:
+    out: list[Path] = []
+    seen_paths: set[str] = set()
+    seen_names: set[str] = set()
+    for raw_path in source_paths:
+        path = Path(raw_path).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(str(path))
+        if path.suffix.lower() not in _YAML_SUFFIXES:
+            raise ValueError(f"Override source path is not YAML: {path}")
+        resolved_key = str(path.resolve())
+        if resolved_key in seen_paths:
+            raise ValueError(f"Duplicate override source path: {path}")
+        if path.name in seen_names:
+            raise ValueError(f"Duplicate override source filename: {path.name}")
+        seen_paths.add(resolved_key)
+        seen_names.add(path.name)
+        out.append(path)
+    return out
+
+
+def iter_override_source_files(
+    data_dir: Path | None = None,
+    *,
+    source_paths: Iterable[Path] | None = None,
+) -> list[Path]:
     """Return all override YAML files in deterministic order.
 
-    If `data_dir` is provided, files are scanned from that filesystem path.
-    Otherwise, the package `data` directory next to this module is used.
+    If `source_paths` is provided, those exact YAML files are used in the given
+    order. Otherwise, files are scanned from `data_dir` or the package data
+    directory.
     """
+    if data_dir is not None and source_paths is not None:
+        raise ValueError("data_dir and source_paths are mutually exclusive")
+    if source_paths is not None:
+        return _explicit_yaml_paths(source_paths)
     root = data_dir if data_dir is not None else _default_data_dir()
     return list(_sorted_yaml_paths(root.iterdir()))
 
 
-def load_override_source_texts(data_dir: Path | None = None) -> dict[str, str]:
+def load_override_source_texts(
+    data_dir: Path | None = None,
+    *,
+    source_paths: Iterable[Path] | None = None,
+) -> dict[str, str]:
     """Load all override YAML files as text keyed by filename."""
     out: dict[str, str] = {}
-    for path in iter_override_source_files(data_dir=data_dir):
+    for path in iter_override_source_files(
+        data_dir=data_dir, source_paths=source_paths
+    ):
         out[path.name] = path.read_text(encoding="utf-8")
     return out
 
@@ -115,10 +151,14 @@ def _normalize_star_dict(star: MutableMapping[str, Any]) -> None:
 
 def load_parsed_override_documents(
     data_dir: Path | None = None,
+    *,
+    source_paths: Iterable[Path] | None = None,
 ) -> list[dict[str, Any]]:
     """Load and parse every YAML file as a document dict (may contain `description`, `stars`)."""
     docs: list[dict[str, Any]] = []
-    for path in iter_override_source_files(data_dir=data_dir):
+    for path in iter_override_source_files(
+        data_dir=data_dir, source_paths=source_paths
+    ):
         raw = _parse_yaml_file(path)
         if raw is None:
             continue
@@ -132,6 +172,8 @@ def load_parsed_override_documents(
 
 def load_normalized_override_stars(
     data_dir: Path | None = None,
+    *,
+    source_paths: Iterable[Path] | None = None,
 ) -> list[dict[str, Any]]:
     """Load all stars from all YAML files, with Cartesian coordinates filled when omitted.
 
@@ -139,7 +181,9 @@ def load_normalized_override_stars(
     plus ``_source_file`` and ``_file_description`` (if the file had ``description``).
     """
     out: list[dict[str, Any]] = []
-    for path in iter_override_source_files(data_dir=data_dir):
+    for path in iter_override_source_files(
+        data_dir=data_dir, source_paths=source_paths
+    ):
         raw = _parse_yaml_file(path)
         if raw is None:
             continue

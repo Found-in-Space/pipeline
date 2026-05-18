@@ -39,13 +39,6 @@ ASTROPHYS_CORE_COLS = (
     "teff_gspspec",
     "teff_espucd",
     "teff_gspphot",
-    "teff_gspphot_lower",
-    "teff_gspphot_upper",
-    "logg_esphs",
-    "logg_gspspec",
-    "logg_gspphot",
-    "logg_gspphot_lower",
-    "logg_gspphot_upper",
 )
 
 CORE_OUTPUT_NAMES = (

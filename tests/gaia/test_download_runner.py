@@ -73,6 +73,16 @@ class _FakeArchive:
         return self.remote_storage
 
 
+class _SizedCountsArchive(_FakeArchive):
+    def __init__(self, counts: list[HealpixCount]) -> None:
+        super().__init__()
+        self.counts = counts
+
+    def fetch_count_results(self, job_id: str, *, access_mode: str):
+        assert job_id.startswith("count-job-")
+        return self.counts
+
+
 class _SlowArchive(_FakeArchive):
     def __init__(self) -> None:
         super().__init__()
@@ -133,6 +143,8 @@ def _write_project(
     access: str = "auto",
     source_where_adql: str | None = None,
     remote_quota_bytes: int | None = None,
+    remote_result_bytes_per_row: int | None = None,
+    remote_max_result_bytes_per_job: int | None = None,
 ) -> Path:
     project_path = tmp_path / "project.toml"
     mag_limit = "mag_limit = 9.0\n" if mode == "small" else ""
@@ -144,6 +156,16 @@ def _write_project(
     remote_quota = (
         f"remote_quota_bytes = {remote_quota_bytes}\n"
         if remote_quota_bytes is not None
+        else ""
+    )
+    remote_result_bytes = (
+        f"remote_result_bytes_per_row = {remote_result_bytes_per_row}\n"
+        if remote_result_bytes_per_row is not None
+        else ""
+    )
+    remote_max_result = (
+        f"remote_max_result_bytes_per_job = {remote_max_result_bytes_per_job}\n"
+        if remote_max_result_bytes_per_job is not None
         else ""
     )
     project_path.write_text(
@@ -161,7 +183,7 @@ access = "{access}"
 {mag_limit}state_db = "data/processed/gaia-download.sqlite"
 row_cap = 1000
 max_active_jobs = 2
-{remote_quota}remote_min_free_bytes = 5000000000
+{remote_quota}{remote_result_bytes}{remote_max_result}remote_min_free_bytes = 5000000000
 {source_where}\
 carry_field_sets = ["motion", "mass"]
 
@@ -390,6 +412,36 @@ def test_authenticated_remote_quota_guard_blocks_insufficient_quota(
     else:  # pragma: no cover - protects the guard against accidental removal
         raise AssertionError("Expected remote quota guard to block submission")
     assert archive.submitted == []
+
+
+def test_authenticated_plan_caps_batches_by_estimated_remote_result_size(
+    tmp_path: Path,
+) -> None:
+    project = load_project(
+        _write_project(
+            tmp_path,
+            mode="full",
+            access="authenticated",
+            remote_result_bytes_per_row=100,
+            remote_max_result_bytes_per_job=1_000,
+        )
+    )
+    archive = _SizedCountsArchive(
+        [HealpixCount(1, 6), HealpixCount(2, 5), HealpixCount(3, 4)]
+    )
+
+    summary = plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    assert summary.batch_count == 2
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batches = state.read_batches()
+    assert [batch.expected_rows for batch in batches] == [10, 5]
+    assert [batch.estimated_result_bytes for batch in batches] == [1_000, 500]
 
 
 def test_authenticated_remote_quota_guard_blocks_external_active_jobs(

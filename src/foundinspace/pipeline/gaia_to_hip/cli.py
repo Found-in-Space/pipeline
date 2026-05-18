@@ -47,6 +47,7 @@ def build_cmd(
     out = prepare_gaia_hip_mapping(
         download_output,
         project.gaia_to_hip.output_parquet,
+        supplemental_parquets=project.gaia_to_hip.supplemental_parquets,
         overwrite=force,
     )
     click.echo(f"Wrote Gaia↔HIP mapping sidecar to {out.resolve()}")

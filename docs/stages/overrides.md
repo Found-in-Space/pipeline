@@ -8,6 +8,8 @@ Normalize curated YAML overrides into a merger-ready Parquet table.
 
 - Packaged override YAML files in `foundinspace.pipeline.overrides.data`.
 - Optional custom `[overrides] data_dir`.
+- Optional explicit `[overrides] source_paths` list. When present, only those
+  YAML files are read, in order.
 
 ## Command
 

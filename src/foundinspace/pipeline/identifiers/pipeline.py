@@ -216,6 +216,7 @@ def prepare_identifiers_sidecar(
     *,
     crossmatch_parquet: Path | None = None,
     overrides_data_dir: Path | None = None,
+    overrides_source_paths: tuple[Path, ...] | None = None,
     overwrite: bool = False,
 ) -> Path:
     output_path = Path(output_path).expanduser()
@@ -247,7 +248,10 @@ def prepare_identifiers_sidecar(
         mapped = hip_ids.map(hip_to_gaia)
         vizier_df["gaia_source_id"] = mapped.astype("Int64")
 
-    override_df = build_override_identifier_rows(overrides_data_dir)
+    override_df = build_override_identifier_rows(
+        overrides_data_dir,
+        source_paths=overrides_source_paths,
+    )
 
     if vizier_df.empty and override_df.empty:
         combined = schema.empty_identifier_frame()

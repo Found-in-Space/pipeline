@@ -27,13 +27,21 @@ Optional unless you use `fis-pipeline gaia download ...`.
   Defaults to `20000000000`; raise it for accounts with increased quota.
 - `remote_min_free_bytes`: minimum Gaia Archive async result space to leave free
   after each submission. Defaults to `5000000000`.
+- `remote_result_bytes_per_row`: conservative estimate used for Gaia Archive
+  result quota planning. Defaults to `400`, based on core pipeline-shaped Gaia
+  VOTable gzip downloads. Increase it for wide sidecar/enrichment queries.
+- `remote_max_result_bytes_per_job`: target maximum estimated result size for
+  each authenticated Gaia job. Defaults to `5000000000`.
 - `carry_field_sets`: checked-in Gaia field sets to preserve for sidecars.
-  Defaults to `[]`; the `full` profile opts into `["motion", "mass"]`.
+  Defaults to `[]`; opt into enrichment sidecars explicitly per release.
 
 ## `[gaia-to-hip]`
 
 - `download_ecsv`: cached Gaia DR3 `hipparcos2_best_neighbour` ECSV path.
 - `output_parquet`: processed crossmatch sidecar path.
+- `supplemental_parquets`: optional explicit list of already processed
+  Gaia-HIP mapping Parquet files to append to the official Gaia map. The
+  combined output is validated as one-to-one.
 
 ## `[hip]`
 
@@ -52,6 +60,9 @@ Optional unless you use `fis-pipeline gaia download ...`.
 - `output_parquet`: processed override table path.
 - `data_dir`: optional custom override YAML directory. If omitted, packaged
   overrides are used.
+- `source_paths`: optional explicit list of override YAML files. When present,
+  only these files are read, in the listed order. Mutually exclusive with
+  `data_dir`.
 
 ## `[merge]`
 

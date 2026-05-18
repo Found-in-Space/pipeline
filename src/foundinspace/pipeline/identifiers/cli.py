@@ -42,6 +42,13 @@ def _overrides_data_dir(project) -> Path | None:
     return project.overrides.data_dir
 
 
+def _overrides_source_paths(project) -> tuple[Path, ...] | None:
+    """Read explicit source_paths from [overrides] if configured."""
+    if not project.overrides.is_configured:
+        return None
+    return project.overrides.source_paths
+
+
 @cli.command(name="build")
 @click.option(
     "--project",
@@ -69,6 +76,7 @@ def build(
         project.identifiers.output_parquet,
         crossmatch_parquet=_crossmatch_parquet(project),
         overrides_data_dir=_overrides_data_dir(project),
+        overrides_source_paths=_overrides_source_paths(project),
         overwrite=force,
     )
     click.echo(f"Wrote wide identifier sidecar to {out.resolve()}")

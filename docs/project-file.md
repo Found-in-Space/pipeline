@@ -15,11 +15,13 @@ directory. Environment-variable syntax is rejected so runs are reproducible.
 - `[gaia]`: `input_dir`, `output_dir`, optional `mag_limit`.
 - `[gaia_download]`: optional Gaia downloader mode, access, state, batching,
   and carry-through field-set configuration.
-- `[gaia-to-hip]`: `download_ecsv`, `output_parquet`.
+- `[gaia-to-hip]`: `download_ecsv`, `output_parquet`, optional
+  `supplemental_parquets`.
 - `[hip]`: `download_ecsv`, `output_parquet`.
 - `[identifiers]`: `hip_hd_ecsv`, `iv27a_catalog_ecsv`,
   `iv27a_proper_names_ecsv`, `output_parquet`.
-- `[overrides]`: `output_parquet`, optional `data_dir`.
+- `[overrides]`: `output_parquet`, optional `data_dir` or explicit
+  `source_paths`.
 - `[merge]`: `output_dir`, `healpix_order`, optional `sidecar_output_dir`.
 
 Only the sections needed by a command must be present. Missing sections fail

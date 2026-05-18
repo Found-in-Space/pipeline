@@ -79,9 +79,13 @@ def _row_for_star(star: dict[str, Any]) -> dict[str, Any]:
 def build_overrides_dataframe(
     *,
     data_dir: Path | None = None,
+    source_paths: tuple[Path, ...] | None = None,
 ) -> pd.DataFrame:
     """Load YAML overrides and return a frame with OUTPUT_COLS + override metadata."""
-    stars = load_normalized_override_stars(data_dir=data_dir)
+    stars = load_normalized_override_stars(
+        data_dir=data_dir,
+        source_paths=source_paths,
+    )
     if not stars:
         return pd.DataFrame(columns=OUTPUT_OVERRIDES_COLS)
 
@@ -108,6 +112,7 @@ def prepare_overrides_parquet(
     output_path: Path,
     *,
     data_dir: Path | None = None,
+    source_paths: tuple[Path, ...] | None = None,
     overwrite: bool = False,
 ) -> Path:
     """Write ``output_path`` (zstd Parquet) from packaged or custom override YAML dir."""
@@ -115,7 +120,7 @@ def prepare_overrides_parquet(
     if output_path.exists() and not overwrite:
         raise FileExistsError(str(output_path))
 
-    df = build_overrides_dataframe(data_dir=data_dir)
+    df = build_overrides_dataframe(data_dir=data_dir, source_paths=source_paths)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(df, preserve_index=False)
     pq.write_table(table, str(output_path), compression="zstd")
