@@ -1,34 +1,18 @@
 # Pipeline Documentation
 
-This documentation is organized by how you want to approach the project.
+This repository builds the Found in Space publication view: Gaia, Hipparcos,
+supporting identifiers, and curated overrides are processed into one canonical
+HEALPix-sharded Parquet dataset.
 
-## Run the Pipeline
+The documentation is intentionally small:
 
-- [Start here](start-here.md) for the shortest path through setup and commands.
-- [Project file](project-file.md) explains the `project.toml` contract.
-- [Profiles](profiles.md) explains the checked-in `full` and `small` templates.
-- [Feed downloads](operations/feed-downloads.md) covers the current download workflow.
-- [Gaia download](operations/gaia-download.md) walks through scripted and
-  browser-assisted Gaia VOTable downloads.
+- [Run configuration](run-configuration.md) explains how to run the pipeline,
+  what `project.toml` controls, and what to capture for a reproducible
+  publication run.
+- [Scientific provenance](scientific-provenance.md) describes the source
+  catalogs, calculation engines, field requirements, formulas, and quality
+  provenance encoded by the staged catalog pipelines.
+- [Output contract](output-contract.md) defines the merged single-view output,
+  deduplication policy, overrides, reports, and sidecars.
 
-## Understand the Data Choices
-
-- [Parallax and distance](concepts/parallax-distance.md)
-- [Magnitude and temperature](concepts/magnitude-temperature.md)
-- [Coordinates and epochs](concepts/coordinates-epochs.md)
-- [Merge policy](reference/merge-policy.md)
-- [Output schema](reference/output-schema.md)
-- [Quality flags](reference/quality-flags.md)
-
-## Modify the Code
-
-Each stage has a short ownership page:
-
-- [Gaia](stages/gaia.md)
-- [Hipparcos](stages/hipparcos.md)
-- [Gaia to Hipparcos](stages/gaia-to-hip.md)
-- [Identifiers](stages/identifiers.md)
-- [Overrides](stages/overrides.md)
-- [Merge](stages/merge.md)
-
-For command details, see [reference/cli.md](reference/cli.md).
+Read them in that order for a full release-oriented view of this pipeline.

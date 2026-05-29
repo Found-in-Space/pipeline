@@ -72,6 +72,7 @@ def build_gaia(
             skip_if_exists=not force,
             mag_limit=project.gaia.mag_limit,
             carry_fields=carry_fields,
+            calculation_engine=project.gaia.calculation_engine,
         )
 
 

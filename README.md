@@ -2,14 +2,13 @@
 
 Prepare stellar catalog data for [foundin.space](https://foundin.space/).
 
-This project turns Gaia and Hipparcos catalog sources into clean, documented
-Parquet artifacts: staged catalog tables, identifier sidecars, manual override
-tables, and a canonical HEALPix-sharded merge that can be consumed by downstream
-octree builders and viewers.
+This project turns Gaia, Hipparcos, supporting identifier feeds, and curated
+manual corrections into the Found in Space publication view: a canonical
+HEALPix-sharded Parquet dataset for downstream spatial builds.
 
-The repository is both a production data-preparation tool and a learning path
-for people who want to understand how stellar catalog data becomes a 3D star
-dataset.
+The repository is the primary processing pipeline for producing that single
+view, with supporting code for source downloads, staging, overrides, merge
+decisions, and publication evidence.
 
 ## Quick Start
 
@@ -22,10 +21,10 @@ uv run fis-pipeline project init --profile small project.toml
 ```
 
 The `small` profile uses real catalog downloads, including a scripted Gaia
-download path. Gaia VOTables are written under `[gaia] input_dir`, then staged
+download path. Gaia VOTables are written under `[gaia].input_dir`, then staged
 with `fis-pipeline gaia build`.
 
-For the guided path, start with [docs/start-here.md](docs/start-here.md).
+For the guided path, start with [docs/README.md](docs/README.md).
 
 ## CLI
 
@@ -45,7 +44,8 @@ Command groups:
 - `overrides` - build merger-ready manual overrides from YAML.
 - `merge` - stream Gaia, Hipparcos, crossmatch, and overrides into merged shards.
 
-See [docs/reference/cli.md](docs/reference/cli.md) for the command reference.
+See [docs/run-configuration.md](docs/run-configuration.md) for the release
+oriented command flow and run-capture requirements.
 
 ## Project Layout
 
@@ -68,12 +68,10 @@ templates only; catalog data is not stored in git.
 
 ## Documentation
 
-- [docs/README.md](docs/README.md) - documentation map.
-- [docs/profiles.md](docs/profiles.md) - full and small project profiles.
-- [docs/project-file.md](docs/project-file.md) - `project.toml` contract.
-- [docs/reference/output-schema.md](docs/reference/output-schema.md) - output columns.
-- [docs/reference/quality-flags.md](docs/reference/quality-flags.md) - packed quality flags.
-- [docs/reference/merge-policy.md](docs/reference/merge-policy.md) - canonical merge policy.
+- [docs/README.md](docs/README.md) - documentation entry point.
+- [docs/run-configuration.md](docs/run-configuration.md) - usage, project file, Gaia query bundle, and publication run capture.
+- [docs/scientific-provenance.md](docs/scientific-provenance.md) - source catalogs, calculations, field contracts, and quality provenance.
+- [docs/output-contract.md](docs/output-contract.md) - merged HEALPix output, deduplication, overrides, reports, and sidecars.
 
 ## Development
 

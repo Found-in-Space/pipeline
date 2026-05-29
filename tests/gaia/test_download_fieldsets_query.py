@@ -12,6 +12,10 @@ from foundinspace.pipeline.gaia.download.query import (
     build_count_query,
     build_download_query,
 )
+from foundinspace.pipeline.gaia.engines import (
+    DEFAULT_GAIA_CALCULATION_ENGINE,
+    get_gaia_calculation_engine,
+)
 
 
 def test_load_gaia_field_sets_defaults_and_enrichment_columns() -> None:
@@ -95,6 +99,39 @@ def test_download_query_core_astrophysical_fields_match_active_pipeline() -> Non
         "logg_gspphot_upper",
     ):
         assert field_name not in query
+
+
+def test_default_calculation_engine_declares_pipeline_input_columns() -> None:
+    engine = get_gaia_calculation_engine()
+
+    assert engine.name == DEFAULT_GAIA_CALCULATION_ENGINE
+    assert engine.required_input_columns == (
+        "source_id",
+        "ra",
+        "dec",
+        "parallax",
+        "parallax_error",
+        "pmra",
+        "pmdec",
+        "phot_g_mean_mag",
+        "phot_bp_mean_mag",
+        "phot_rp_mean_mag",
+        "ruwe",
+        "r_med_geo",
+        "r_lo_geo",
+        "r_hi_geo",
+        "r_med_photogeo",
+        "r_lo_photogeo",
+        "r_hi_photogeo",
+        "mg_gspphot",
+        "mg_gspphot_lower",
+        "mg_gspphot_upper",
+        "ag_gspphot",
+        "teff_esphs",
+        "teff_gspspec",
+        "teff_espucd",
+        "teff_gspphot",
+    )
 
 
 def test_source_where_adql_is_added_to_count_and_download_queries() -> None:

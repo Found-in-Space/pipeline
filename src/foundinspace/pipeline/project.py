@@ -8,6 +8,11 @@ from typing import Any
 
 import tomllib
 
+from foundinspace.pipeline.gaia.engines import (
+    DEFAULT_GAIA_CALCULATION_ENGINE,
+    GAIA_CALCULATION_ENGINES,
+)
+
 FORMAT_VERSION = 1
 PROJECT_PROFILES = ("full", "small")
 
@@ -21,7 +26,7 @@ _SECTION_NAMES = {
     "gaia_download",
 }
 
-_GAIA_KEYS = {"input_dir", "output_dir", "mag_limit"}
+_GAIA_KEYS = {"input_dir", "output_dir", "mag_limit", "calculation_engine"}
 _GAIA_DOWNLOAD_KEYS = {
     "mode",
     "access",
@@ -256,6 +261,14 @@ class GaiaConfig(_SectionAccessor):
     @property
     def mag_limit(self) -> float | None:
         return self._optional_float_field("mag_limit")
+
+    @property
+    def calculation_engine(self) -> str:
+        return self._optional_str_choice(
+            "calculation_engine",
+            default=DEFAULT_GAIA_CALCULATION_ENGINE,
+            choices=GAIA_CALCULATION_ENGINES,
+        )
 
 
 class GaiaDownloadConfig(_SectionAccessor):

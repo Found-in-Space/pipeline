@@ -6,6 +6,7 @@ import pytest
 import tomllib
 from click.testing import CliRunner
 
+from foundinspace.pipeline.gaia.engines import DEFAULT_GAIA_CALCULATION_ENGINE
 from foundinspace.pipeline.project import (
     FORMAT_VERSION,
     PROJECT_PROFILES,
@@ -62,6 +63,7 @@ def test_load_project_resolves_relative_paths_from_project_file_dir(
 
     assert project.gaia.output_dir == project_dir / "data" / "processed" / "gaia"
     assert project.gaia.mag_limit is None
+    assert project.gaia.calculation_engine == DEFAULT_GAIA_CALCULATION_ENGINE
     assert (
         project.hip.output_parquet
         == project_dir / "data" / "processed" / "hip_stars.parquet"
@@ -130,6 +132,41 @@ def test_load_project_gaia_mag_limit_rejects_non_numeric(tmp_path: Path) -> None
     project = load_project(project_path)
     with pytest.raises(ValueError, match="gaia.mag_limit must be a number"):
         _ = project.gaia.mag_limit
+
+
+def test_load_project_gaia_calculation_engine_reads_optional_choice(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text().replace(
+            'output_dir = "data/processed/gaia"\n',
+            'output_dir = "data/processed/gaia"\n'
+            'calculation_engine = "DR3_AP_BJ_CORE"\n',
+        ),
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    assert project.gaia.calculation_engine == DEFAULT_GAIA_CALCULATION_ENGINE
+
+
+def test_load_project_gaia_calculation_engine_rejects_unknown(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text().replace(
+            'output_dir = "data/processed/gaia"\n',
+            'output_dir = "data/processed/gaia"\ncalculation_engine = "thin"\n',
+        ),
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+    with pytest.raises(ValueError, match="gaia.calculation_engine"):
+        _ = project.gaia.calculation_engine
 
 
 def test_load_project_gaia_download_config_and_merge_sidecar_default(
@@ -458,6 +495,7 @@ def test_render_project_template_is_valid_toml_with_all_sections() -> None:
     assert parsed["format_version"] == FORMAT_VERSION
 
     assert "output_dir" in parsed["gaia"]
+    assert parsed["gaia"]["calculation_engine"] == DEFAULT_GAIA_CALCULATION_ENGINE
     assert "mag_limit" not in parsed["gaia"]
 
     assert "download_ecsv" in parsed["gaia-to-hip"]
@@ -488,6 +526,7 @@ def test_render_project_profiles_are_valid_toml(profile: str) -> None:
     assert parsed["format_version"] == FORMAT_VERSION
     assert parsed["gaia"]["input_dir"]
     assert parsed["gaia"]["output_dir"]
+    assert parsed["gaia"]["calculation_engine"] == DEFAULT_GAIA_CALCULATION_ENGINE
     assert parsed["merge"]["healpix_order"] == 3
 
 

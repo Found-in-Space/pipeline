@@ -46,9 +46,12 @@ _DIST_SRC_MAP = {
 
 
 def _ensure_float(df: pd.DataFrame, cols: list[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        raise ValueError(
+            "Missing required Gaia astrometry column(s): " + ", ".join(missing)
+        )
     for c in cols:
-        if c not in df.columns:
-            df[c] = np.nan
         df[c] = df[c].astype(float)
 
 
@@ -149,9 +152,9 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Tier C: photometric distance (phot_g_mean_mag; assign_photometry_gaia not run yet)
-    g_mag = df.get("phot_g_mean_mag", pd.Series(np.nan, index=df.index)).to_numpy(float)
-    mg = df.get("mg_gspphot", pd.Series(np.nan, index=df.index)).to_numpy(float)
-    ag = df.get("ag_gspphot", pd.Series(np.nan, index=df.index)).to_numpy(float)
+    g_mag = df["phot_g_mean_mag"].to_numpy(float)
+    mg = df["mg_gspphot"].to_numpy(float)
+    ag = df["ag_gspphot"].to_numpy(float)
 
     mag_ok = np.isfinite(g_mag)
     mg_ok = np.isfinite(mg) & (mg > -10) & (mg < 15)

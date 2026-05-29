@@ -9,7 +9,6 @@ from foundinspace.pipeline.constants import (
     PHOT_SRC_SHIFT,
     TEFF_DEFAULT_K,
     TEFF_SRC_BPRP,
-    TEFF_SRC_BV,
     TEFF_SRC_DEFAULT,
     TEFF_SRC_ESPHS,
     TEFF_SRC_ESPUCD,
@@ -43,6 +42,14 @@ def _gaia_after_astrometry(parallax=1.0, parallax_error=0.01, **extra):
         "r_hi_photogeo": np.nan,
         "phot_g_mean_mag": 14.0,
         "bp_rp": 0.5,
+        "mg_gspphot": np.nan,
+        "mg_gspphot_lower": np.nan,
+        "mg_gspphot_upper": np.nan,
+        "ag_gspphot": np.nan,
+        "teff_esphs": np.nan,
+        "teff_gspspec": np.nan,
+        "teff_espucd": np.nan,
+        "teff_gspphot": np.nan,
     }
     base.update(extra)
     df = pd.DataFrame([base])
@@ -125,7 +132,7 @@ def test_compute_teff_gaia_adds_teff_src_to_quality_flags():
     """compute_teff_gaia sets teff and ORs teff_src into quality_flags."""
     df = _gaia_after_astrometry(bp_rp=0.6, bv=np.nan)
     df = assign_photometry_gaia(df)
-    # No Gaia spectroscopic Teff columns -> cascade to bp_rp or default
+    # No valid Gaia spectroscopic Teff values -> cascade to bp_rp or default
     out = compute_teff_gaia(df)
     assert "teff" in out.columns
     assert out["teff"].iloc[0] >= 1000 and out["teff"].iloc[0] <= 50000
@@ -159,25 +166,21 @@ def test_compute_teff_gaia_default_fallback():
     """No valid Teff source -> default 5800 K and teff_src = TEFF_SRC_DEFAULT."""
     df = _gaia_after_astrometry()
     df["bp_rp"] = np.nan
-    df["bv"] = np.nan
     df = assign_photometry_gaia(df)
     out = compute_teff_gaia(df)
     assert out["teff"].iloc[0] == TEFF_DEFAULT_K
     assert qf_teff_src(out["quality_flags"].iloc[0]) == TEFF_SRC_DEFAULT
 
 
-def test_compute_teff_gaia_bv_fallback():
-    """B-V used when no Gaia Teff and no bp_rp; teff_src = TEFF_SRC_BV."""
+def test_compute_teff_gaia_ignores_bv_without_bp_rp():
+    """Gaia temperature fallback does not use B-V in the strict Gaia engine."""
     df = _gaia_after_astrometry()
     df["bp_rp"] = np.nan
     df["bv"] = 0.65
     df = assign_photometry_gaia(df)
     out = compute_teff_gaia(df)
-    assert (
-        out["teff"].iloc[0] != TEFF_DEFAULT_K
-        or qf_teff_src(out["quality_flags"].iloc[0]) == TEFF_SRC_BV
-    )
-    assert qf_teff_src(out["quality_flags"].iloc[0]) in (TEFF_SRC_BV, TEFF_SRC_DEFAULT)
+    assert out["teff"].iloc[0] == TEFF_DEFAULT_K
+    assert qf_teff_src(out["quality_flags"].iloc[0]) == TEFF_SRC_DEFAULT
 
 
 def test_full_gaia_photometry_chain_quality_flags():
@@ -200,6 +203,5 @@ def test_full_gaia_photometry_chain_quality_flags():
         TEFF_SRC_ESPHS,
         TEFF_SRC_ESPUCD,
         TEFF_SRC_GSPPHOT,
-        TEFF_SRC_BV,
     )
     assert "mag_abs" in df.columns and "teff" in df.columns

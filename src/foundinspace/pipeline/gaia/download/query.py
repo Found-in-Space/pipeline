@@ -4,48 +4,12 @@ import hashlib
 from dataclasses import dataclass
 
 from foundinspace.pipeline.gaia.download.fieldsets import GaiaCarryField
+from foundinspace.pipeline.gaia.engines import (
+    DEFAULT_GAIA_CALCULATION_ENGINE,
+    get_gaia_calculation_engine,
+)
 
 HP3_DIVISOR = 9_007_199_254_740_992
-
-GAIA_SOURCE_CORE_COLS = (
-    "source_id",
-    "ra",
-    "dec",
-    "parallax",
-    "parallax_error",
-    "pmra",
-    "pmdec",
-    "phot_g_mean_mag",
-    "phot_bp_mean_mag",
-    "phot_rp_mean_mag",
-    "ruwe",
-)
-
-DISTANCE_CORE_COLS = (
-    "r_med_geo",
-    "r_lo_geo",
-    "r_hi_geo",
-    "r_med_photogeo",
-    "r_lo_photogeo",
-    "r_hi_photogeo",
-)
-
-ASTROPHYS_CORE_COLS = (
-    "mg_gspphot",
-    "mg_gspphot_lower",
-    "mg_gspphot_upper",
-    "ag_gspphot",
-    "teff_esphs",
-    "teff_gspspec",
-    "teff_espucd",
-    "teff_gspphot",
-)
-
-CORE_OUTPUT_NAMES = (
-    *GAIA_SOURCE_CORE_COLS,
-    *DISTANCE_CORE_COLS,
-    *ASTROPHYS_CORE_COLS,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +18,7 @@ class GaiaQuerySpec:
     mag_limit: float | None
     carry_fields: tuple[GaiaCarryField, ...]
     source_where_adql: str | None = None
+    calculation_engine: str = DEFAULT_GAIA_CALCULATION_ENGINE
 
     @property
     def requires_aps(self) -> bool:
@@ -107,7 +72,8 @@ def _format_where(clauses: list[str]) -> str:
 
 def validate_query_spec(spec: GaiaQuerySpec) -> None:
     _normalize_source_where_adql(spec.source_where_adql)
-    core_names = set(CORE_OUTPUT_NAMES)
+    engine = get_gaia_calculation_engine(spec.calculation_engine)
+    core_names = set(engine.core_output_names)
     for field in spec.carry_fields:
         if field.source == "query" and field.name in core_names:
             raise ValueError(
@@ -121,6 +87,12 @@ def validate_query_spec(spec: GaiaQuerySpec) -> None:
 
 def build_count_query(spec: GaiaQuerySpec) -> str:
     validate_query_spec(spec)
+    engine = get_gaia_calculation_engine(spec.calculation_engine)
+    if not engine.requires_distance_table:
+        raise ValueError(
+            f"Gaia calculation engine {engine.name!r} does not support the "
+            "current count query distance eligibility filter"
+        )
     return (
         "SELECT\n"
         f"  (g.source_id / {HP3_DIVISOR}) AS hp3,\n"
@@ -140,10 +112,11 @@ def build_download_query(
     hp3_values: tuple[int, ...] | list[int] | None = None,
 ) -> str:
     validate_query_spec(spec)
+    engine = get_gaia_calculation_engine(spec.calculation_engine)
     select_lines: list[str] = []
-    select_lines.extend(_select_columns("g", GAIA_SOURCE_CORE_COLS))
-    select_lines.extend(_select_columns("d", DISTANCE_CORE_COLS))
-    select_lines.extend(_select_columns("ap", ASTROPHYS_CORE_COLS))
+    select_lines.extend(_select_columns("g", engine.gaia_source_columns))
+    select_lines.extend(_select_columns("d", engine.distance_columns))
+    select_lines.extend(_select_columns("ap", engine.astrophysical_parameter_columns))
     for field in spec.carry_fields:
         if field.source == "query":
             select_lines.append(f"  {field.expression} AS {field.name}")
@@ -152,9 +125,14 @@ def build_download_query(
         "FROM gaiadr3.gaia_source AS g",
         "JOIN external.gaiaedr3_distance AS d",
         "  ON d.source_id = g.source_id",
-        "LEFT JOIN gaiadr3.astrophysical_parameters AS ap",
-        "  ON ap.source_id = g.source_id",
     ]
+    if engine.requires_astrophysical_parameters:
+        joins.extend(
+            [
+                "LEFT JOIN gaiadr3.astrophysical_parameters AS ap",
+                "  ON ap.source_id = g.source_id",
+            ]
+        )
     if spec.requires_aps:
         joins.extend(
             [

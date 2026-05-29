@@ -4,7 +4,6 @@ import pandas as pd
 from foundinspace.pipeline.common.photometry import (
     absolute_magnitude_from_apparent,
     bp_rp_to_teff,
-    bv_to_teff,
     distance_modulus,
 )
 from foundinspace.pipeline.common.quality_flags import (
@@ -16,7 +15,6 @@ from foundinspace.pipeline.constants import (
     PHOTOMETRY_QUALITY_DM_FACTOR,
     TEFF_DEFAULT_K,
     TEFF_SRC_BPRP,
-    TEFF_SRC_BV,
     TEFF_SRC_DEFAULT,
     TEFF_SRC_ESPHS,
     TEFF_SRC_ESPUCD,
@@ -34,6 +32,14 @@ _LOGG_VALID_LO = 0.0
 _LOGG_VALID_HI = 9.0
 
 
+def _require_columns(df: pd.DataFrame, columns: tuple[str, ...], *, label: str) -> None:
+    missing = [column for column in columns if column not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Missing required Gaia {label} column(s): " + ", ".join(missing)
+        )
+
+
 def compute_teff_gaia(work: pd.DataFrame) -> pd.DataFrame:
     """Derive effective temperature (Teff) via Gaia best-of cascade.
 
@@ -41,20 +47,28 @@ def compute_teff_gaia(work: pd.DataFrame) -> pd.DataFrame:
     1. Gaia spectroscopic Teff, in order of reliability:
        ESP-HS → GSP-Spec → ESP-UCD → GSP-Phot.
     2. Teff estimated from Gaia BP-RP color index.
-    3. Teff estimated from Johnson B-V color index.
-    4. Default: 5800 K (solar-type).
+    3. Default: 5800 K (solar-type).
 
     Columns added:
         teff : effective temperature (K). Which cascade level was used is encoded in
                quality_flags (bits 4-6; see qf_teff_src).
 
-    Args:
-        work: Working DataFrame (must have columns for Gaia Teff, bp_rp, bv as
-              available; missing columns are treated as all-NaN).
-
     Returns:
-        New DataFrame with teff added and quality_flags updated with teff_src (bits 4-6).
+        New DataFrame with teff added and quality_flags updated with teff_src
+        (bits 4-6).
     """
+    _require_columns(
+        work,
+        (
+            "teff_esphs",
+            "teff_gspspec",
+            "teff_espucd",
+            "teff_gspphot",
+            "bp_rp",
+            "quality_flags",
+        ),
+        label="temperature",
+    )
 
     def _valid_teff(series: pd.Series) -> pd.Series:
         s = series.astype(float)
@@ -65,26 +79,10 @@ def compute_teff_gaia(work: pd.DataFrame) -> pd.DataFrame:
             & (s <= _TEFF_VALID_HI)
         )
 
-    teff_esphs = (
-        work["teff_esphs"]
-        if "teff_esphs" in work.columns
-        else pd.Series(np.nan, index=work.index)
-    )
-    teff_gspspec = (
-        work["teff_gspspec"]
-        if "teff_gspspec" in work.columns
-        else pd.Series(np.nan, index=work.index)
-    )
-    teff_espucd = (
-        work["teff_espucd"]
-        if "teff_espucd" in work.columns
-        else pd.Series(np.nan, index=work.index)
-    )
-    teff_gspphot = (
-        work["teff_gspphot"]
-        if "teff_gspphot" in work.columns
-        else pd.Series(np.nan, index=work.index)
-    )
+    teff_esphs = work["teff_esphs"]
+    teff_gspspec = work["teff_gspspec"]
+    teff_espucd = work["teff_espucd"]
+    teff_gspphot = work["teff_gspphot"]
 
     has_teff_esphs = _valid_teff(teff_esphs)
     has_teff_gspspec = _valid_teff(teff_gspspec) & ~has_teff_esphs
@@ -111,24 +109,18 @@ def compute_teff_gaia(work: pd.DataFrame) -> pd.DataFrame:
     )
     no_gaia_teff = pd.isnull(teff_gaia) | ~np.isfinite(teff_gaia)
 
-    bp_rp = work.get("bp_rp", pd.Series(np.nan, index=work.index)).astype(float)
-    bv = work.get("bv", pd.Series(np.nan, index=work.index)).astype(float)
+    bp_rp = work["bp_rp"].astype(float)
 
     has_bp_rp = pd.notnull(bp_rp) & np.isfinite(bp_rp)
-    has_bv = pd.notnull(bv) & np.isfinite(bv)
 
     teff_from_bp_rp = bp_rp_to_teff(bp_rp.to_numpy())
-    teff_from_bv = bv_to_teff(bv.to_numpy())
 
     use_bp_rp = no_gaia_teff & has_bp_rp
-    use_bv = no_gaia_teff & ~use_bp_rp & has_bv
 
     teff_final = np.where(
         ~no_gaia_teff,
         teff_gaia,
-        np.where(
-            use_bp_rp, teff_from_bp_rp, np.where(use_bv, teff_from_bv, TEFF_DEFAULT_K)
-        ),
+        np.where(use_bp_rp, teff_from_bp_rp, TEFF_DEFAULT_K),
     )
     teff_final = np.where(
         pd.isnull(teff_final) | ~np.isfinite(teff_final),
@@ -151,11 +143,7 @@ def compute_teff_gaia(work: pd.DataFrame) -> pd.DataFrame:
                 np.where(
                     has_teff_gspphot,
                     TEFF_SRC_GSPPHOT,
-                    np.where(
-                        use_bp_rp,
-                        TEFF_SRC_BPRP,
-                        np.where(use_bv, TEFF_SRC_BV, TEFF_SRC_DEFAULT),
-                    ),
+                    np.where(use_bp_rp, TEFF_SRC_BPRP, TEFF_SRC_DEFAULT),
                 ),
             ),
         ),
@@ -234,19 +222,38 @@ def compute_log_g_gaia(work: pd.DataFrame) -> pd.DataFrame:
 
 def assign_photometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     """Gaia-only: mag = phot_g_mean_mag, color = bp_rp; OR phot_src into quality_flags."""
+    _require_columns(
+        df,
+        ("phot_g_mean_mag", "bp_rp", "quality_flags"),
+        label="photometry",
+    )
     df["mag"] = df["phot_g_mean_mag"].astype(float)
     df["color"] = df["bp_rp"].astype(float)
-    flags = df.get("quality_flags", pd.Series(0, index=df.index)).astype(np.uint16)
+    flags = df["quality_flags"].astype(np.uint16)
     df["quality_flags"] = add_photometry_source(flags, PHOT_SRC_GAIA_G)
     return df
 
 
 def compute_mag_abs_gaia(df: pd.DataFrame) -> pd.DataFrame:
     """Gaia-only: full cascade (GSP-Phot, ext-corrected, dm). photometry_quality in mag."""
+    _require_columns(
+        df,
+        (
+            "distance_use_pc",
+            "mag",
+            "ag_gspphot",
+            "mg_gspphot",
+            "quality_flags",
+            "astrometry_quality",
+            "mg_gspphot_upper",
+            "mg_gspphot_lower",
+        ),
+        label="absolute-magnitude",
+    )
     r_pc = df["distance_use_pc"].astype(float)
     mag = df["mag"].astype(float)
-    ag = df.get("ag_gspphot", pd.Series(np.nan, index=df.index)).astype(float)
-    mg = df.get("mg_gspphot", pd.Series(np.nan, index=df.index)).astype(float)
+    ag = df["ag_gspphot"].astype(float)
+    mg = df["mg_gspphot"].astype(float)
     dm = distance_modulus(r_pc)
 
     qf = df["quality_flags"].astype(np.uint16).to_numpy()
@@ -268,17 +275,11 @@ def compute_mag_abs_gaia(df: pd.DataFrame) -> pd.DataFrame:
         .fillna(pd.Series(mag_abs_dm, index=df.index))
     )
 
-    f_dist = df.get("astrometry_quality", pd.Series(np.nan, index=df.index)).astype(
-        float
-    )
+    f_dist = df["astrometry_quality"].astype(float)
     quality_dm = PHOTOMETRY_QUALITY_DM_FACTOR * f_dist
 
-    mg_upper = df.get("mg_gspphot_upper", pd.Series(np.nan, index=df.index)).astype(
-        float
-    )
-    mg_lower = df.get("mg_gspphot_lower", pd.Series(np.nan, index=df.index)).astype(
-        float
-    )
+    mg_upper = df["mg_gspphot_upper"].astype(float)
+    mg_lower = df["mg_gspphot_lower"].astype(float)
     has_bounds = (
         pd.notnull(mg_upper)
         & pd.notnull(mg_lower)

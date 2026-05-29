@@ -34,6 +34,9 @@ def _base_gaia_df(**overrides):
         "r_lo_photogeo": np.nan,
         "r_med_photogeo": np.nan,
         "r_hi_photogeo": np.nan,
+        "phot_g_mean_mag": 14.0,
+        "mg_gspphot": np.nan,
+        "ag_gspphot": np.nan,
     }
     d.update(overrides)
     return pd.DataFrame([d])
@@ -237,6 +240,9 @@ def test_multi_row_mixed_tiers():
                 "r_med_photogeo": np.nan,
                 "r_lo_photogeo": np.nan,
                 "r_hi_photogeo": np.nan,
+                "phot_g_mean_mag": 14.0,
+                "mg_gspphot": np.nan,
+                "ag_gspphot": np.nan,
             },
             {
                 "ra": 0,

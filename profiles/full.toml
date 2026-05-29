@@ -3,6 +3,7 @@ format_version = 1
 [gaia]
 input_dir = "data/catalogs/gaia"
 output_dir = "data/processed/gaia"
+calculation_engine = "dr3_ap_bj_core"
 # mag_limit = 15.0
 
 [gaia_download]
