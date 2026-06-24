@@ -139,6 +139,15 @@ class _TransientJobErrorThenCompletesArchive(_FakeArchive):
         return "Could not open JPA EntityManager for transaction"
 
 
+class _ErrorVotableArchive(_FakeArchive):
+    def download_result(self, job_id: str, output_path: Path, *, access_mode: str):
+        with gzip.open(output_path, "wb") as fp:
+            fp.write(
+                b"""<?xml version="1.0"?>
+<VOTABLE><RESOURCE><INFO name="QUERY_STATUS" value="ERROR">failed</INFO></RESOURCE></VOTABLE>"""
+            )
+
+
 def _write_project(
     tmp_path: Path,
     *,
@@ -510,6 +519,94 @@ def test_projection_spec_change_blocks_active_jobs(tmp_path: Path) -> None:
         raise AssertionError("Expected active job to block acquisition spec drift")
 
 
+def test_run_blocks_when_project_no_longer_matches_existing_plan(
+    tmp_path: Path,
+) -> None:
+    project_path = _write_project(tmp_path, carry_field_sets=["motion"])
+    project = load_project(project_path)
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    _write_project(tmp_path, carry_field_sets=[])
+    changed_project = load_project(project_path)
+
+    try:
+        run_gaia_download(
+            changed_project,
+            archive_client=archive,
+            poll_seconds=0,
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "does not match the current acquisition spec" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected stale plan to block download run")
+    assert archive.submitted == []
+
+
+def test_refresh_counts_after_completed_download_is_blocked(tmp_path: Path) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    refresh_archive = _FakeArchive()
+    try:
+        plan_gaia_download(
+            project,
+            archive_client=refresh_archive,
+            refresh_counts=True,
+            poll_seconds=0,
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "Cannot refresh Gaia HEALPix counts after download progress" in str(exc)
+        assert "downloaded" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected refreshed counts to block after download")
+    assert refresh_archive.count_submitted == []
+
+
+def test_refresh_counts_still_allowed_for_unstarted_plan(tmp_path: Path) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    refresh_archive = _SizedCountsArchive([HealpixCount(6, 50), HealpixCount(7, 75)])
+    summary = plan_gaia_download(
+        project,
+        archive_client=refresh_archive,
+        refresh_counts=True,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    assert summary.total_rows == 125
+    assert refresh_archive.count_submitted == ["count-job-1"]
+
+
 def test_authenticated_remote_quota_guard_blocks_insufficient_quota(
     tmp_path: Path,
 ) -> None:
@@ -722,6 +819,63 @@ def test_build_input_guard_rejects_extra_downloader_outputs(tmp_path: Path) -> N
         )
 
 
+def test_existing_uncompressed_votable_gzip_output_is_rejected(
+    tmp_path: Path,
+) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        output_path = state.read_batches()[0].output_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(b'<?xml version="1.0"?><VOTABLE></VOTABLE>')
+
+    try:
+        run_gaia_download(
+            project,
+            archive_client=archive,
+            poll_seconds=0,
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "Existing Gaia output is not valid" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected uncompressed .vot.gz output to be rejected")
+    assert archive.submitted == []
+
+
+def test_archive_error_votable_is_not_marked_downloaded(tmp_path: Path) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _ErrorVotableArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    summary = run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    assert summary.failed_batches == 1
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batch = state.read_batches()[0]
+    assert batch.state == "failed"
+    assert batch.downloaded_at is None
+    assert batch.downloaded_bytes is None
+    assert not batch.output_path.exists()
+
+
 def test_build_input_guard_ignores_absent_state_db(tmp_path: Path) -> None:
     project = load_project(_write_project(tmp_path))
 
@@ -804,6 +958,35 @@ def test_plan_resumes_background_count_job(tmp_path: Path) -> None:
     assert second.batch_count == 1
     assert archive.count_submitted == ["count-job-1"]
     assert any("Reusing Gaia HEALPix count table" in message for message in messages)
+
+
+def test_run_forwards_poll_seconds_to_implicit_plan(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _FakeArchive()
+    observed: list[float] = []
+
+    original_run_count_query_job = runner_module._run_count_query_job
+
+    def capture_run_count_query_job(*args, **kwargs):
+        observed.append(kwargs["poll_seconds"])
+        return original_run_count_query_job(*args, **kwargs)
+
+    monkeypatch.setattr(
+        runner_module,
+        "_run_count_query_job",
+        capture_run_count_query_job,
+    )
+
+    run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=7.5,
+        echo=lambda _msg: None,
+    )
+
+    assert observed == [7.5]
 
 
 def test_write_browser_queries_for_small_profile(tmp_path: Path) -> None:

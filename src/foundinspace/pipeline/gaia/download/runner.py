@@ -276,7 +276,7 @@ def _require_current_acquisition_spec(
         raise ValueError(
             "Gaia download state does not match the current acquisition spec. "
             f"State DB: {state.path}. Use a fresh state_db/input_dir pair or "
-            "intentionally clean up stale downloader outputs before building."
+            "intentionally clean up stale downloader outputs before continuing."
         )
 
 
@@ -349,6 +349,35 @@ def _acquisition_spec_blockers(
     return blockers
 
 
+def _guard_refresh_counts(state: GaiaDownloadState, project: PipelineProject) -> None:
+    blockers: list[str] = []
+    progressed = [
+        f"{batch.batch_id} state={batch.state}"
+        for batch in state.read_batches()
+        if batch.state != "planned"
+    ]
+    if progressed:
+        blockers.append(f"progressed batches: {_sample_join(progressed)}")
+
+    downloaded_counts = sum(count.downloaded for count in state.read_counts())
+    if downloaded_counts:
+        blockers.append(f"{downloaded_counts:,} downloaded HEALPix count rows")
+
+    existing_outputs = downloader_output_files(project.gaia.input_dir)
+    if existing_outputs:
+        blockers.append(
+            "existing downloader output files: "
+            + _sample_join(str(path) for path in existing_outputs)
+        )
+
+    if blockers:
+        raise ValueError(
+            "Cannot refresh Gaia HEALPix counts after download progress exists: "
+            + "; ".join(blockers)
+            + ". Use a fresh state_db/input_dir pair to re-plan with refreshed counts."
+        )
+
+
 def _sample_join(values: Iterable[object]) -> str:
     items = list(values)
     sample = ", ".join(str(value) for value in items[:5])
@@ -373,6 +402,8 @@ def plan_gaia_download(
 
     with GaiaDownloadState(project.gaia_download.state_db) as state:
         _guard_acquisition_spec(state, project, acquisition_hash, echo=echo)
+        if refresh_counts:
+            _guard_refresh_counts(state, project)
         query_dir = _query_dir(project.gaia_download.state_db)
         query_dir.mkdir(parents=True, exist_ok=True)
         count_query_path = query_dir / "count.adql"
@@ -627,7 +658,13 @@ def run_gaia_download(
         try:
             if not state.has_batches():
                 echo("No Gaia download plan found; planning first")
-                plan_gaia_download(project, archive_client=archive, echo=echo)
+                plan_gaia_download(
+                    project,
+                    archive_client=archive,
+                    poll_seconds=poll_seconds,
+                    echo=echo,
+                )
+            _require_current_acquisition_spec(state, project)
 
             while True:
                 progress = _delete_failed_authenticated(state, archive, echo)
@@ -1041,10 +1078,12 @@ def _verify_votable_gzip(path: Path) -> None:
     try:
         with gzip.open(path, "rb") as fp:
             sample = fp.read(4096)
-    except OSError:
-        sample = path.read_bytes()[:4096]
+    except OSError as exc:
+        raise ValueError(f"Gaia result is not a valid gzip file: {path}") from exc
     if b"VOTABLE" not in sample.upper():
         raise ValueError(f"Gaia result does not look like a VOTable: {path}")
+    if b"QUERY_STATUS" in sample.upper() and b'VALUE="ERROR"' in sample.upper():
+        raise ValueError(f"Gaia result VOTable reports an archive error: {path}")
 
 
 def _friendly_archive_error(error_message: str, *, access_mode: str) -> str:
