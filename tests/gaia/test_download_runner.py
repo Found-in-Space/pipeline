@@ -5,6 +5,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+import foundinspace.pipeline.gaia.download.cli as download_cli_module
 import foundinspace.pipeline.gaia.download.runner as runner_module
 from foundinspace.pipeline.gaia.download.archive import (
     ArchiveJobInfo,
@@ -14,7 +15,9 @@ from foundinspace.pipeline.gaia.download.cli import cli as download_cli
 from foundinspace.pipeline.gaia.download.planner import HealpixCount
 from foundinspace.pipeline.gaia.download.runner import (
     ANONYMOUS_QUOTA_ERROR,
+    RunSummary,
     _friendly_archive_error,
+    gaia_download_input_files_for_build,
     plan_gaia_download,
     run_gaia_download,
     write_browser_queries,
@@ -145,9 +148,12 @@ def _write_project(
     remote_quota_bytes: int | None = None,
     remote_result_bytes_per_row: int | None = None,
     remote_max_result_bytes_per_job: int | None = None,
+    carry_field_sets: list[str] | None = None,
 ) -> Path:
     project_path = tmp_path / "project.toml"
     mag_limit = "mag_limit = 9.0\n" if mode == "small" else ""
+    carry_fields = ["motion", "mass"] if carry_field_sets is None else carry_field_sets
+    carry_field_sets_toml = ", ".join(f'"{name}"' for name in carry_fields)
     source_where = (
         f'source_where_adql = """\n{source_where_adql}\n"""\n'
         if source_where_adql is not None
@@ -185,7 +191,7 @@ row_cap = 1000
 max_active_jobs = 2
 {remote_quota}{remote_result_bytes}{remote_max_result}remote_min_free_bytes = 5000000000
 {source_where}\
-carry_field_sets = ["motion", "mass"]
+carry_field_sets = [{carry_field_sets_toml}]
 
 [gaia-to-hip]
 download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"
@@ -346,6 +352,30 @@ def test_authenticated_error_job_is_deleted_before_terminal(
     assert batch.remote_deleted_at is not None
 
 
+def test_run_cli_exits_nonzero_when_batches_failed(tmp_path: Path, monkeypatch) -> None:
+    project_path = _write_project(tmp_path)
+
+    def fake_run_gaia_download(project, **_kwargs):
+        return RunSummary(
+            state_db=project.gaia_download.state_db,
+            downloaded_batches=0,
+            deleted_remote_batches=0,
+            failed_batches=1,
+        )
+
+    monkeypatch.setattr(
+        download_cli_module,
+        "run_gaia_download",
+        fake_run_gaia_download,
+    )
+
+    result = CliRunner().invoke(download_cli, ["run", "--project", str(project_path)])
+
+    assert result.exit_code != 0
+    assert "failed=1" in result.output
+    assert "gaia-download.sqlite" in result.output
+
+
 def test_transient_archive_error_is_requeued_after_remote_delete(
     tmp_path: Path,
 ) -> None:
@@ -377,6 +407,107 @@ def test_transient_archive_error_is_requeued_after_remote_delete(
         batch = state.read_batches()[0]
     assert batch.state == "deleted_remote"
     assert batch.retry_count == 1
+
+
+def test_projection_spec_change_blocks_after_downloaded_output(tmp_path: Path) -> None:
+    project_path = _write_project(tmp_path, carry_field_sets=["motion"])
+    project = load_project(project_path)
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    _write_project(tmp_path, carry_field_sets=[])
+    changed_project = load_project(project_path)
+    try:
+        plan_gaia_download(
+            changed_project,
+            archive_client=archive,
+            poll_seconds=0,
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "acquisition spec changed" in str(exc)
+        assert "downloaded batches" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected acquisition spec drift to block re-planning")
+    assert archive.count_submitted == ["count-job-1"]
+
+
+def test_projection_spec_change_clears_unstarted_plan(tmp_path: Path) -> None:
+    project_path = _write_project(tmp_path, carry_field_sets=["motion"])
+    project = load_project(project_path)
+    archive = _FakeArchive()
+    messages: list[str] = []
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    _write_project(tmp_path, carry_field_sets=[])
+    changed_project = load_project(project_path)
+    summary = plan_gaia_download(
+        changed_project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=messages.append,
+    )
+
+    assert summary.batch_count == 1
+    assert archive.count_submitted == ["count-job-1"]
+    assert any("cleared unstarted download plan" in message for message in messages)
+    with GaiaDownloadState(changed_project.gaia_download.state_db) as state:
+        batch = state.read_batches()[0]
+    query_text = batch.query_text_path.read_text(encoding="utf-8")
+    assert "g.ref_epoch AS ref_epoch" not in query_text
+
+
+def test_projection_spec_change_blocks_active_jobs(tmp_path: Path) -> None:
+    project_path = _write_project(tmp_path, carry_field_sets=["motion"])
+    project = load_project(project_path)
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batch = state.read_batches()[0]
+        state.mark_submitted(
+            batch.batch_id,
+            job_id="job-active",
+            job_url="https://example.test/job-active",
+            phase="EXECUTING",
+        )
+
+    _write_project(tmp_path, carry_field_sets=[])
+    changed_project = load_project(project_path)
+    try:
+        plan_gaia_download(
+            changed_project,
+            archive_client=archive,
+            poll_seconds=0,
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "active or cleanup-pending jobs" in str(exc)
+        assert "b0001" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected active job to block acquisition spec drift")
 
 
 def test_authenticated_remote_quota_guard_blocks_insufficient_quota(
@@ -516,6 +647,85 @@ def test_authenticated_remote_quota_guard_blocks_failed_remote_jobs(
     else:  # pragma: no cover
         raise AssertionError("Expected failed remote jobs to block submission")
     assert archive.submitted == []
+
+
+def test_build_input_guard_returns_current_completed_outputs(tmp_path: Path) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    inputs = gaia_download_input_files_for_build(project)
+
+    assert inputs == sorted(project.gaia.input_dir.glob("gaia_small_b*.vot.gz"))
+
+
+def test_build_input_guard_rejects_incomplete_state(tmp_path: Path) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+
+    try:
+        gaia_download_input_files_for_build(project)
+    except ValueError as exc:
+        assert "download state is not complete" in str(exc)
+        assert "b0001 state=planned" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected incomplete state to block Gaia build inputs")
+
+
+def test_build_input_guard_rejects_extra_downloader_outputs(tmp_path: Path) -> None:
+    project = load_project(_write_project(tmp_path))
+    archive = _FakeArchive()
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    stale = project.gaia.input_dir / "gaia_small_b9999.vot.gz"
+    with gzip.open(stale, "wb") as fp:
+        fp.write(b'<?xml version="1.0"?><VOTABLE></VOTABLE>')
+
+    try:
+        gaia_download_input_files_for_build(project)
+    except ValueError as exc:
+        assert "not in the current download state" in str(exc)
+        assert "b9999" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError(
+            "Expected stale downloader output to block Gaia build inputs"
+        )
+
+
+def test_build_input_guard_ignores_absent_state_db(tmp_path: Path) -> None:
+    project = load_project(_write_project(tmp_path))
+
+    assert gaia_download_input_files_for_build(project) is None
 
 
 def test_run_echoes_wait_status_when_poll_phase_is_unchanged(tmp_path: Path) -> None:

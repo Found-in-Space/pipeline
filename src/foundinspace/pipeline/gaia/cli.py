@@ -4,6 +4,9 @@ import click
 
 from foundinspace.pipeline.gaia.download.cli import cli as download_cli
 from foundinspace.pipeline.gaia.download.fieldsets import load_gaia_field_sets
+from foundinspace.pipeline.gaia.download.runner import (
+    gaia_download_input_files_for_build,
+)
 from foundinspace.pipeline.gaia.pipeline import main
 from foundinspace.pipeline.project import load_project
 
@@ -51,9 +54,15 @@ def build_gaia(
     if not input_dir.is_dir():
         raise click.ClickException(f"[gaia] input_dir does not exist: {input_dir}")
 
-    input_files = sorted(
-        p for p in input_dir.iterdir() if p.is_file() and _is_votable(p)
-    )
+    try:
+        download_input_files = gaia_download_input_files_for_build(project)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    input_files = download_input_files
+    if input_files is None:
+        input_files = sorted(
+            p for p in input_dir.iterdir() if p.is_file() and _is_votable(p)
+        )
     if not input_files:
         raise click.ClickException(f"No VOTable files found in {input_dir}")
 

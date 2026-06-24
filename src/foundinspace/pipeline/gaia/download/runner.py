@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import gzip
+import re
 import shutil
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,9 @@ from foundinspace.pipeline.project import PipelineProject
 Echo = Callable[[str], None]
 
 ANONYMOUS_QUOTA_ERROR = "Filesystem quota exceeded for user anonymous"
+ACQUISITION_SPEC_HASH_METADATA_KEY = "acquisition_spec_hash"
+DOWNLOAD_QUERY_HASH_METADATA_KEY = "download_query_hash"
+DOWNLOADER_OUTPUT_RE = re.compile(r"^gaia_(?:small|full)_b\d{4}\.vot\.gz$")
 REMOTE_GB = 1_000_000_000
 MAX_TRANSIENT_BATCH_RETRIES = 3
 TRANSIENT_ARCHIVE_ERROR_MARKERS = (
@@ -180,6 +184,177 @@ def _job_name(project: PipelineProject, batch: DownloadBatch, batch_hash: str) -
     return f"fis-gaia-{project.gaia_download.mode}-{batch.batch_id}-{batch_hash[:8]}"
 
 
+def is_downloader_output_file(path: Path) -> bool:
+    return DOWNLOADER_OUTPUT_RE.fullmatch(path.name.lower()) is not None
+
+
+def downloader_output_files(input_dir: Path) -> list[Path]:
+    if not input_dir.is_dir():
+        return []
+    return sorted(
+        path
+        for path in input_dir.iterdir()
+        if path.is_file() and is_downloader_output_file(path)
+    )
+
+
+def _acquisition_spec_hash(count_query: str, download_query: str) -> str:
+    return query_hash(
+        "gaia-download-acquisition-v1\n"
+        "-- count query --\n"
+        f"{count_query}\n"
+        "-- download query --\n"
+        f"{download_query}\n"
+    )
+
+
+def _acquisition_hash_for_project(project: PipelineProject) -> tuple[str, str, str]:
+    spec = query_spec_from_project(project)
+    count_query = build_count_query(spec)
+    download_query = build_download_query(spec)
+    return (
+        count_query,
+        download_query,
+        _acquisition_spec_hash(count_query, download_query),
+    )
+
+
+def gaia_download_input_files_for_build(project: PipelineProject) -> list[Path] | None:
+    """Return current downloader outputs when populated state should drive build."""
+    if (
+        not project.gaia_download.configured
+        or not project.gaia_download.state_db.exists()
+    ):
+        return None
+
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batches = state.read_batches()
+        if not batches:
+            return None
+        _require_current_acquisition_spec(state, project)
+        incomplete = [
+            f"{batch.batch_id} state={batch.state}"
+            for batch in batches
+            if batch.state not in {"downloaded", "deleted_remote"}
+        ]
+        if incomplete:
+            sample = "; ".join(incomplete[:5])
+            suffix = "" if len(incomplete) <= 5 else "; ..."
+            raise ValueError(
+                "Gaia download state is not complete; cannot build from "
+                f"{state.path}: {sample}{suffix}"
+            )
+        expected_paths = [batch.output_path for batch in batches]
+
+    expected_set = set(expected_paths)
+    extras = [
+        path
+        for path in downloader_output_files(project.gaia.input_dir)
+        if path not in expected_set
+    ]
+    if extras:
+        sample = ", ".join(str(path) for path in extras[:5])
+        suffix = "" if len(extras) <= 5 else ", ..."
+        raise ValueError(
+            "Found Gaia downloader-shaped VOTable files that are not in the "
+            f"current download state: {sample}{suffix}. Use a fresh input_dir "
+            "or remove stale downloader outputs before building."
+        )
+
+    for path in expected_paths:
+        _verify_votable_gzip(path)
+    return expected_paths
+
+
+def _require_current_acquisition_spec(
+    state: GaiaDownloadState,
+    project: PipelineProject,
+) -> None:
+    acquisition_hash = _acquisition_hash_for_project(project)[2]
+    stored_hash = state.get_metadata(ACQUISITION_SPEC_HASH_METADATA_KEY)
+    if stored_hash != acquisition_hash:
+        raise ValueError(
+            "Gaia download state does not match the current acquisition spec. "
+            f"State DB: {state.path}. Use a fresh state_db/input_dir pair or "
+            "intentionally clean up stale downloader outputs before building."
+        )
+
+
+def _guard_acquisition_spec(
+    state: GaiaDownloadState,
+    project: PipelineProject,
+    acquisition_hash: str,
+    *,
+    echo: Echo,
+) -> None:
+    stored_hash = state.get_metadata(ACQUISITION_SPEC_HASH_METADATA_KEY)
+    if stored_hash == acquisition_hash:
+        return
+
+    blockers = _acquisition_spec_blockers(state, project)
+    if blockers:
+        raise ValueError(
+            "Gaia download acquisition spec changed, and existing downloader "
+            "state or files cannot be safely reused: "
+            + "; ".join(blockers)
+            + ". Use a fresh state_db/input_dir pair or intentionally clean up "
+            "stale downloader outputs before re-planning."
+        )
+
+    if stored_hash is not None or state.has_batches():
+        state.clear_download_plan()
+        echo("Gaia acquisition spec changed; cleared unstarted download plan")
+
+
+def _acquisition_spec_blockers(
+    state: GaiaDownloadState,
+    project: PipelineProject,
+) -> list[str]:
+    batches = state.read_batches()
+    blockers: list[str] = []
+
+    active = [
+        batch.batch_id
+        for batch in batches
+        if batch.state
+        in {"submitted", "running", "completed_remote", "downloading", "delete_pending"}
+        or (
+            batch.state == "failed" and batch.job_id and batch.remote_deleted_at is None
+        )
+    ]
+    if active:
+        blockers.append(f"active or cleanup-pending jobs: {_sample_join(active)}")
+
+    successful = [
+        batch.batch_id
+        for batch in batches
+        if batch.state in {"downloaded", "deleted_remote"}
+        or batch.downloaded_at is not None
+        or batch.downloaded_bytes is not None
+    ]
+    if successful:
+        blockers.append(f"downloaded batches: {_sample_join(successful)}")
+
+    downloaded_counts = sum(count.downloaded for count in state.read_counts())
+    if downloaded_counts:
+        blockers.append(f"{downloaded_counts:,} downloaded HEALPix count rows")
+
+    existing_outputs = downloader_output_files(project.gaia.input_dir)
+    if existing_outputs:
+        blockers.append(
+            "existing downloader output files: "
+            + _sample_join(str(path) for path in existing_outputs)
+        )
+
+    return blockers
+
+
+def _sample_join(values: Iterable[object]) -> str:
+    items = list(values)
+    sample = ", ".join(str(value) for value in items[:5])
+    return sample if len(items) <= 5 else f"{sample}, ..."
+
+
 def plan_gaia_download(
     project: PipelineProject,
     *,
@@ -190,10 +365,14 @@ def plan_gaia_download(
 ) -> PlanSummary:
     spec = query_spec_from_project(project)
     count_query = build_count_query(spec)
+    full_download_query = build_download_query(spec)
     count_hash = query_hash(count_query)
+    download_hash = query_hash(full_download_query)
+    acquisition_hash = _acquisition_spec_hash(count_query, full_download_query)
     archive = archive_client or GaiaArchiveClient()
 
     with GaiaDownloadState(project.gaia_download.state_db) as state:
+        _guard_acquisition_spec(state, project, acquisition_hash, echo=echo)
         query_dir = _query_dir(project.gaia_download.state_db)
         query_dir.mkdir(parents=True, exist_ok=True)
         count_query_path = query_dir / "count.adql"
@@ -274,6 +453,8 @@ def plan_gaia_download(
             job_names=job_names,
             estimated_result_bytes_per_row=project.gaia_download.remote_result_bytes_per_row,
         )
+        state.set_metadata(ACQUISITION_SPEC_HASH_METADATA_KEY, acquisition_hash)
+        state.set_metadata(DOWNLOAD_QUERY_HASH_METADATA_KEY, download_hash)
 
         over_cap = sum(1 for batch in batches if batch.over_cap)
         echo(

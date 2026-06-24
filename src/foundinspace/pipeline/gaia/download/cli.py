@@ -118,6 +118,11 @@ def run(project_path: Path, poll_seconds: float) -> None:
         )
     except (ValueError, OSError, GaiaCredentialsError) as exc:
         raise click.ClickException(str(exc)) from exc
+    if summary.failed_batches:
+        raise click.ClickException(
+            "Gaia downloads finished with failed batches: "
+            f"failed={summary.failed_batches:,}, state_db={summary.state_db.resolve()}"
+        )
     click.echo(
         "Gaia downloads complete: "
         f"downloaded={summary.downloaded_batches:,}, "

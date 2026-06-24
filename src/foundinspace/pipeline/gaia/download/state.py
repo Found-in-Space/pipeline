@@ -298,6 +298,11 @@ class GaiaDownloadState:
         row = self._conn.execute("SELECT COUNT(*) AS n FROM batches").fetchone()
         return int(row["n"]) > 0
 
+    def clear_download_plan(self) -> None:
+        self._conn.execute("DELETE FROM batches")
+        self._conn.execute("UPDATE counts SET batch_id = NULL, downloaded = 0")
+        self._conn.commit()
+
     def mark_submitted(
         self,
         batch_id: str,
