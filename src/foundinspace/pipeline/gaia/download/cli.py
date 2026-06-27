@@ -7,6 +7,7 @@ import click
 from foundinspace.pipeline.gaia.download.archive import GaiaCredentialsError
 from foundinspace.pipeline.gaia.download.runner import (
     plan_gaia_download,
+    replan_pending_gaia_download,
     run_gaia_download,
     write_browser_queries,
 )
@@ -90,6 +91,41 @@ def queries(project_path: Path, output_dir: Path | None) -> None:
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"Query directory: {summary.query_dir.resolve()}")
+
+
+@cli.command(name="replan-pending")
+@click.option(
+    "--project",
+    "project_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Path to pipeline project TOML.",
+)
+@click.option(
+    "--bytes-per-row",
+    required=True,
+    type=click.IntRange(min=1),
+    help="Estimated remote result bytes per Gaia row for newly planned batches.",
+)
+def replan_pending(project_path: Path, bytes_per_row: int) -> None:
+    """Rewrite only unexecuted Gaia download batches."""
+    project = _load_project_or_die(project_path, "gaia", "gaia_download")
+    try:
+        summary = replan_pending_gaia_download(
+            project,
+            bytes_per_row=bytes_per_row,
+            echo=click.echo,
+        )
+    except (ValueError, GaiaCredentialsError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(
+        "Gaia pending replan complete: "
+        f"protected={summary.protected_batches:,}, "
+        f"new={summary.new_batches:,}, "
+        f"recycled_failed={summary.recycled_failed_batches:,}, "
+        f"effective_row_cap={summary.effective_row_cap:,}"
+    )
+    click.echo(f"State DB: {summary.state_db.resolve()}")
 
 
 @cli.command(name="run")

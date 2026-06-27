@@ -303,6 +303,20 @@ class GaiaDownloadState:
         self._conn.execute("UPDATE counts SET batch_id = NULL, downloaded = 0")
         self._conn.commit()
 
+    def delete_batches(self, batch_ids: list[str]) -> None:
+        if not batch_ids:
+            return
+        placeholders = ",".join("?" for _ in batch_ids)
+        self._conn.execute(
+            f"UPDATE counts SET batch_id = NULL WHERE batch_id IN ({placeholders})",
+            tuple(batch_ids),
+        )
+        self._conn.execute(
+            f"DELETE FROM batches WHERE batch_id IN ({placeholders})",
+            tuple(batch_ids),
+        )
+        self._conn.commit()
+
     def mark_submitted(
         self,
         batch_id: str,

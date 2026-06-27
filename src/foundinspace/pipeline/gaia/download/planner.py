@@ -86,6 +86,23 @@ def best_subset_under_limit(
     return list(reachable[best_total]), best_total
 
 
+def _greedy_subset_under_limit(values: list[int], limit: int) -> tuple[list[int], int]:
+    if limit <= 0:
+        return [], 0
+    chosen: list[int] = []
+    total = 0
+    for index, value in sorted(
+        enumerate(values),
+        key=lambda item: (item[1], -item[0]),
+        reverse=True,
+    ):
+        value_i = int(value)
+        if total + value_i <= limit:
+            chosen.append(index)
+            total += value_i
+    return chosen, total
+
+
 def plan_partitioned_batches(
     counts: list[HealpixCount],
     *,
@@ -108,13 +125,26 @@ def plan_partitioned_batches(
             expected_rows = int(rows)
             over_cap = True
         else:
-            values = [rows for _, rows in pending]
-            chosen_local, expected_rows = best_subset_under_limit(values, row_cap)
-            if not chosen_local:
-                largest_index = max(range(len(values)), key=lambda i: values[i])
-                chosen_local = [largest_index]
-                expected_rows = values[largest_index]
-            chosen_hp3 = tuple(int(pending[i][0]) for i in chosen_local)
+            largest_index = max(
+                range(len(pending)),
+                key=lambda i: (pending[i][1], -pending[i][0]),
+            )
+            anchor_hp3, anchor_rows = pending[largest_index]
+            remaining_capacity = row_cap - int(anchor_rows)
+            filler_items = [
+                item for index, item in enumerate(pending) if index != largest_index
+            ]
+            filler_hp3: tuple[int, ...] = ()
+            filler_rows = 0
+            if remaining_capacity > 0 and filler_items:
+                filler_values = [rows for _, rows in filler_items]
+                chosen_filler, filler_rows = _greedy_subset_under_limit(
+                    filler_values,
+                    remaining_capacity,
+                )
+                filler_hp3 = tuple(int(filler_items[i][0]) for i in chosen_filler)
+            chosen_hp3 = (int(anchor_hp3), *filler_hp3)
+            expected_rows = int(anchor_rows) + int(filler_rows)
             over_cap = False
 
         chosen_set = set(chosen_hp3)

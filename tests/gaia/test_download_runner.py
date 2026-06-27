@@ -19,6 +19,7 @@ from foundinspace.pipeline.gaia.download.runner import (
     _friendly_archive_error,
     gaia_download_input_files_for_build,
     plan_gaia_download,
+    replan_pending_gaia_download,
     run_gaia_download,
     write_browser_queries,
 )
@@ -607,6 +608,145 @@ def test_refresh_counts_still_allowed_for_unstarted_plan(tmp_path: Path) -> None
     assert refresh_archive.count_submitted == ["count-job-1"]
 
 
+def test_replan_pending_preserves_progress_and_replaces_only_pending(
+    tmp_path: Path,
+) -> None:
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
+    archive = _SizedCountsArchive(
+        [
+            HealpixCount(1, 1_200),
+            HealpixCount(2, 900),
+            HealpixCount(3, 800),
+            HealpixCount(4, 700),
+            HealpixCount(5, 600),
+        ]
+    )
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batches = {batch.batch_id: batch for batch in state.read_batches()}
+        state.mark_submitted(
+            "b0001",
+            job_id="job-active",
+            job_url="https://example.test/job-active",
+            phase="EXECUTING",
+        )
+        state.mark_downloaded(batches["b0002"], downloaded_bytes=90_000)
+        state.mark_deleted_remote("b0002")
+
+    summary = replan_pending_gaia_download(
+        project,
+        bytes_per_row=50,
+        archive_client=archive,
+        echo=lambda _msg: None,
+    )
+
+    assert summary.protected_batches == 2
+    assert summary.protected_rows == 2_100
+    assert summary.new_rows == 2_100
+    assert summary.new_batches == 3
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batches = {batch.batch_id: batch for batch in state.read_batches()}
+    assert sorted(batches) == ["b0001", "b0002", "b0006", "b0007", "b0008"]
+    assert batches["b0001"].job_id == "job-active"
+    assert batches["b0001"].state == "submitted"
+    assert batches["b0002"].state == "deleted_remote"
+    assert batches["b0002"].downloaded_bytes == 90_000
+    assert [
+        batches[key].estimated_result_bytes for key in ("b0006", "b0007", "b0008")
+    ] == [
+        40_000,
+        35_000,
+        30_000,
+    ]
+
+
+def test_replan_pending_recycles_failed_after_remote_cleanup(tmp_path: Path) -> None:
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
+    archive = _SizedCountsArchive([HealpixCount(1, 1_200), HealpixCount(2, 900)])
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        state.mark_submitted(
+            "b0001",
+            job_id="job-failed",
+            job_url="https://example.test/job-failed",
+            phase="EXECUTING",
+        )
+        state.mark_failed("b0001", phase="ERROR", error_message="archive failed")
+
+    archive.deleted.clear()
+    summary = replan_pending_gaia_download(
+        project,
+        bytes_per_row=50,
+        archive_client=archive,
+        echo=lambda _msg: None,
+    )
+
+    assert archive.deleted == ["job-failed"]
+    assert summary.recycled_failed_batches == 1
+    assert summary.new_rows == 2_100
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batches = {batch.batch_id: batch for batch in state.read_batches()}
+    assert sorted(batches) == ["b0003", "b0004"]
+    assert batches["b0003"].hp3_values == (1,)
+    assert batches["b0004"].hp3_values == (2,)
+
+
+def test_replan_pending_aborts_when_failed_cleanup_fails(tmp_path: Path) -> None:
+    project = load_project(
+        _write_project(tmp_path, mode="full", access="authenticated")
+    )
+    archive = _SizedCountsArchive([HealpixCount(1, 1_200), HealpixCount(2, 900)])
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        state.mark_submitted(
+            "b0001",
+            job_id="job-failed",
+            job_url="https://example.test/job-failed",
+            phase="EXECUTING",
+        )
+        state.mark_failed("b0001", phase="ERROR", error_message="archive failed")
+
+    try:
+        replan_pending_gaia_download(
+            project,
+            bytes_per_row=50,
+            archive_client=_DeleteFailsArchive(),
+            echo=lambda _msg: None,
+        )
+    except ValueError as exc:
+        assert "remote delete failed" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected failed remote cleanup to block replan")
+
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        batches = {batch.batch_id: batch for batch in state.read_batches()}
+    assert sorted(batches) == ["b0001", "b0002"]
+    assert batches["b0001"].state == "failed"
+    assert batches["b0001"].remote_deleted_at is None
+
+
 def test_authenticated_remote_quota_guard_blocks_insufficient_quota(
     tmp_path: Path,
 ) -> None:
@@ -640,6 +780,40 @@ def test_authenticated_remote_quota_guard_blocks_insufficient_quota(
     else:  # pragma: no cover - protects the guard against accidental removal
         raise AssertionError("Expected remote quota guard to block submission")
     assert archive.submitted == []
+
+
+def test_authenticated_remote_quota_waits_for_local_active_jobs(
+    tmp_path: Path,
+) -> None:
+    project = load_project(
+        _write_project(
+            tmp_path,
+            mode="full",
+            access="authenticated",
+            remote_quota_bytes=5_000_000_300,
+            remote_result_bytes_per_row=100,
+        )
+    )
+    archive = _SizedCountsArchive([HealpixCount(1, 2), HealpixCount(2, 2)])
+    messages: list[str] = []
+
+    plan_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=lambda _msg: None,
+    )
+    summary = run_gaia_download(
+        project,
+        archive_client=archive,
+        poll_seconds=0,
+        echo=messages.append,
+    )
+
+    assert summary.failed_batches == 0
+    assert summary.deleted_remote_batches == 2
+    assert archive.submitted == ["job-1", "job-2"]
+    assert any("waiting for remote quota" in message for message in messages)
 
 
 def test_authenticated_plan_caps_batches_by_estimated_remote_result_size(

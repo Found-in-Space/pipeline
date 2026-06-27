@@ -43,6 +43,17 @@ uv run fis-pipeline gaia download run --project project.toml
 uv run fis-pipeline gaia build --project project.toml
 ```
 
+If Gaia result-size estimates need to change after some batches already
+finished, replan only unexecuted work:
+
+```bash
+uv run fis-pipeline gaia download replan-pending --project project.toml --bytes-per-row 250
+uv run fis-pipeline gaia download run --project project.toml
+```
+
+Downloaded or remotely completed batches are preserved; only planned or failed
+pending batches are replaced.
+
 For a browser-assisted Gaia run, generate ADQL instead of submitting jobs:
 
 ```bash
@@ -99,6 +110,19 @@ The count query can omit projection-only left joins that do not affect row
 eligibility, but both queries must be generated together from the same spec.
 Hand-editing one query without regenerating the bundle breaks the contract.
 
+## Gaia Download Sizing
+
+`[gaia_download].remote_result_bytes_per_row` estimates compressed Gaia Archive
+result bytes per selected row. The estimate drives remote quota guards and can
+reduce the effective row cap below `[gaia_download].row_cap`.
+
+The completed 2026-06 full Gaia DR3 download with `calculation_engine =
+"dr3_ap_bj_core"` and no carry field sets recorded 1,467,744,818 selected rows
+and 146,842,060,166 downloaded bytes: 100.046 bytes per row overall. Batch-level
+bytes per row ranged from 94.228 to 104.920, with median 100.237 and p90
+104.500. For the same query shape, `120` bytes per row would leave margin; use a
+larger value, such as `250`, when fields or joins change.
+
 ## Credentials And Resume State
 
 Gaia Archive credentials are read from `GAIA_CREDENTIALS_FILE` or
@@ -128,3 +152,6 @@ created the output. Capture at least:
 If `../catalogs` publishes a source or deduplication snapshot, its manifest
 should pin the pipeline SHA, calculation engine, query bundle hashes, and files
 used by this pipeline run.
+
+For local source-download evidence bundles, use the layout and checksum
+conventions in [Download packages](download-packages.md).

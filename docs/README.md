@@ -9,6 +9,9 @@ The documentation is intentionally small:
 - [Run configuration](run-configuration.md) explains how to run the pipeline,
   what `project.toml` controls, and what to capture for a reproducible
   publication run.
+- [Download packages](download-packages.md) defines the local evidence bundle
+  layout for completed source downloads, including hardlinked payloads,
+  manifests, checksums, and observed Gaia byte-per-row sizing.
 - [Scientific provenance](scientific-provenance.md) describes the source
   catalogs, calculation engines, field requirements, formulas, and quality
   provenance encoded by the staged catalog pipelines.

@@ -44,6 +44,10 @@ TRANSIENT_ARCHIVE_ERROR_MARKERS = (
 )
 
 
+class _RemoteQuotaWaitError(RuntimeError):
+    """Raised when local active Gaia jobs should finish before submitting more."""
+
+
 @dataclass(frozen=True, slots=True)
 class PlanSummary:
     state_db: Path
@@ -70,6 +74,19 @@ class RunSummary:
     downloaded_batches: int
     deleted_remote_batches: int
     failed_batches: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReplanPendingSummary:
+    state_db: Path
+    bytes_per_row: int
+    effective_row_cap: int
+    protected_batches: int
+    protected_rows: int
+    recycled_failed_batches: int
+    new_batches: int
+    new_rows: int
+    over_cap_batches: int
 
 
 def _require_gaia_download(project: PipelineProject) -> None:
@@ -503,16 +520,212 @@ def plan_gaia_download(
         )
 
 
+def replan_pending_gaia_download(
+    project: PipelineProject,
+    *,
+    bytes_per_row: int,
+    archive_client: GaiaArchiveClient | None = None,
+    echo: Echo = print,
+) -> ReplanPendingSummary:
+    if bytes_per_row <= 0:
+        raise ValueError("bytes_per_row must be > 0")
+    _require_gaia_download(project)
+    spec = query_spec_from_project(project)
+    count_query = build_count_query(spec)
+    download_query = build_download_query(spec)
+    count_hash = query_hash(count_query)
+    download_hash = query_hash(download_query)
+    archive = archive_client or GaiaArchiveClient()
+
+    with GaiaDownloadState(project.gaia_download.state_db) as state:
+        _require_current_acquisition_spec(state, project)
+        if not state.has_counts():
+            raise ValueError(
+                "No Gaia HEALPix count table found; run gaia download plan first"
+            )
+        if state.get_metadata("count_query_hash") != count_hash:
+            raise ValueError(
+                "Gaia count table does not match the current count query; "
+                "run a fresh plan with a new state_db/input_dir pair"
+            )
+        if state.get_metadata(DOWNLOAD_QUERY_HASH_METADATA_KEY) != download_hash:
+            raise ValueError(
+                "Gaia download query hash does not match the current project"
+            )
+
+        _cleanup_failed_authenticated_for_replan(state, archive, echo)
+        existing_batches = state.read_batches()
+        replace_ids, protected_batches, recycled_failed = _split_replan_batches(
+            existing_batches
+        )
+        protected_hp3 = {hp3 for batch in protected_batches for hp3 in batch.hp3_values}
+        pending_counts = [
+            count
+            for count in state.read_counts()
+            if not count.downloaded
+            and count.count > 0
+            and count.hp3 not in protected_hp3
+        ]
+        new_rows = sum(count.count for count in pending_counts)
+        access_mode = _resolve_access_mode(project, new_rows)
+        effective_row_cap = _effective_authenticated_row_cap_for_bytes(
+            project,
+            access_mode=access_mode,
+            bytes_per_row=bytes_per_row,
+        )
+        new_batches = plan_download_batches(
+            pending_counts,
+            mode=project.gaia_download.mode,
+            access_mode=access_mode,
+            row_cap=effective_row_cap,
+        )
+        new_batches = _renumber_batches_from(
+            new_batches,
+            _max_batch_number(existing_batches) + 1,
+        )
+
+        query_dir = _query_dir(project.gaia_download.state_db)
+        query_dir.mkdir(parents=True, exist_ok=True)
+        query_paths: dict[str, Path] = {}
+        output_paths: dict[str, Path] = {}
+        query_hashes: dict[str, str] = {}
+        job_names: dict[str, str] = {}
+        for batch in new_batches:
+            batch_query = build_download_query(spec, hp3_values=batch.hp3_values)
+            batch_hash = query_hash(batch_query)
+            query_path = query_dir / f"{batch.batch_id}.adql"
+            query_path.write_text(batch_query + "\n", encoding="utf-8")
+            query_paths[batch.batch_id] = query_path
+            output_paths[batch.batch_id] = _output_path_for_batch(project, batch)
+            query_hashes[batch.batch_id] = batch_hash
+            job_names[batch.batch_id] = _job_name(project, batch, batch_hash)
+
+        state.delete_batches(replace_ids)
+        state.upsert_batches(
+            new_batches,
+            query_text_paths=query_paths,
+            output_paths=output_paths,
+            access_mode=access_mode,
+            query_hashes=query_hashes,
+            job_names=job_names,
+            estimated_result_bytes_per_row=bytes_per_row,
+        )
+
+        protected_rows = sum(batch.expected_rows for batch in protected_batches)
+        over_cap = sum(batch.over_cap for batch in new_batches)
+        echo(
+            "Gaia pending replan: "
+            f"bytes_per_row={bytes_per_row:,}, "
+            f"effective_row_cap={effective_row_cap:,}, "
+            f"protected_batches={len(protected_batches):,}, "
+            f"protected_rows={protected_rows:,}, "
+            f"recycled_failed={recycled_failed:,}, "
+            f"new_batches={len(new_batches):,}, "
+            f"new_rows={new_rows:,}, "
+            f"over_cap={over_cap:,}"
+        )
+        return ReplanPendingSummary(
+            state_db=state.path,
+            bytes_per_row=bytes_per_row,
+            effective_row_cap=effective_row_cap,
+            protected_batches=len(protected_batches),
+            protected_rows=protected_rows,
+            recycled_failed_batches=recycled_failed,
+            new_batches=len(new_batches),
+            new_rows=new_rows,
+            over_cap_batches=over_cap,
+        )
+
+
+def _cleanup_failed_authenticated_for_replan(
+    state: GaiaDownloadState,
+    archive: GaiaArchiveClient,
+    echo: Echo,
+) -> None:
+    for batch in state.read_batches():
+        if batch.state != "failed" or batch.downloaded_bytes is not None:
+            continue
+        if (
+            batch.access_mode == "authenticated"
+            and batch.job_id
+            and batch.remote_deleted_at is None
+        ):
+            try:
+                archive.delete_job(batch.job_id, access_mode=batch.access_mode)
+            except Exception as exc:
+                raise ValueError(
+                    f"Cannot replan failed Gaia batch {batch.batch_id}; "
+                    f"remote delete failed for job {batch.job_id}: {exc}"
+                ) from exc
+            state.mark_remote_deleted(batch.batch_id)
+            echo(f"Gaia {batch.batch_id}: deleted failed remote job {batch.job_id}")
+
+
+def _split_replan_batches(
+    batches: list[BatchState],
+) -> tuple[list[str], list[BatchState], int]:
+    replace_ids: list[str] = []
+    protected: list[BatchState] = []
+    recycled_failed = 0
+    protected_states = {
+        "submitted",
+        "running",
+        "completed_remote",
+        "downloading",
+        "downloaded",
+        "deleted_remote",
+        "delete_pending",
+    }
+    for batch in batches:
+        has_download = (
+            batch.downloaded_at is not None or batch.downloaded_bytes is not None
+        )
+        if batch.state in protected_states or has_download:
+            protected.append(batch)
+        elif batch.state == "planned":
+            replace_ids.append(batch.batch_id)
+        elif batch.state == "failed":
+            if (
+                batch.access_mode == "authenticated"
+                and batch.job_id
+                and batch.remote_deleted_at is None
+            ):
+                raise ValueError(
+                    f"Cannot replan failed Gaia batch {batch.batch_id}; "
+                    "remote cleanup is still pending"
+                )
+            replace_ids.append(batch.batch_id)
+            recycled_failed += 1
+        else:
+            raise ValueError(
+                f"Cannot replan Gaia batch {batch.batch_id}; unknown state "
+                f"{batch.state!r}"
+            )
+    return replace_ids, protected, recycled_failed
+
+
 def _effective_authenticated_row_cap(
     project: PipelineProject,
     *,
     access_mode: str,
 ) -> int:
+    return _effective_authenticated_row_cap_for_bytes(
+        project,
+        access_mode=access_mode,
+        bytes_per_row=project.gaia_download.remote_result_bytes_per_row,
+    )
+
+
+def _effective_authenticated_row_cap_for_bytes(
+    project: PipelineProject,
+    *,
+    access_mode: str,
+    bytes_per_row: int,
+) -> int:
     configured_cap = project.gaia_download.row_cap
     if access_mode != "authenticated":
         return configured_cap
 
-    bytes_per_row = project.gaia_download.remote_result_bytes_per_row
     remote_budget = (
         project.gaia_download.remote_quota_bytes
         - project.gaia_download.remote_min_free_bytes
@@ -624,6 +837,13 @@ def _avoid_finished_batch_id_collisions(
     next_number = (
         max([_batch_number(batch.batch_id) for batch in existing_batches] + [0]) + 1
     )
+    return _renumber_batches_from(batches, next_number)
+
+
+def _renumber_batches_from(
+    batches: list[DownloadBatch],
+    next_number: int,
+) -> list[DownloadBatch]:
     renumbered: list[DownloadBatch] = []
     for offset, batch in enumerate(batches):
         renumbered.append(
@@ -642,6 +862,10 @@ def _batch_number(batch_id: str) -> int:
         return int(batch_id.removeprefix("b"))
     except ValueError:
         return 0
+
+
+def _max_batch_number(batches: list[BatchState]) -> int:
+    return max((_batch_number(batch.batch_id) for batch in batches), default=0)
 
 
 def run_gaia_download(
@@ -995,12 +1219,16 @@ def _can_submit_batch(
     ]
     if len(active) >= project.gaia_download.max_active_jobs:
         return False
-    _check_remote_quota(
-        project,
-        state,
-        archive,
-        batch,
-    )
+    try:
+        _check_remote_quota(
+            project,
+            state,
+            archive,
+            batch,
+        )
+    except _RemoteQuotaWaitError as exc:
+        echo(f"Gaia {batch.batch_id}: waiting for remote quota ({exc})")
+        return False
 
     batch.output_path.parent.mkdir(parents=True, exist_ok=True)
     free_bytes = shutil.disk_usage(batch.output_path.parent).free
@@ -1057,15 +1285,17 @@ def _check_remote_quota(
     )
     free_after = project.gaia_download.remote_quota_bytes - projected_bytes
     if free_after < project.gaia_download.remote_min_free_bytes:
-        raise ValueError(
-            "Gaia remote quota guard blocked submission: "
+        message = (
             f"known remote results {_format_bytes(storage.known_result_bytes)}, "
             f"active estimate {_format_bytes(active_estimate)}, "
             f"next batch estimate {_format_bytes(batch.estimated_result_bytes)}, "
             f"quota {_format_bytes(project.gaia_download.remote_quota_bytes)}, "
             f"free after submit {_format_bytes(free_after)}, required free "
-            f"{_format_bytes(project.gaia_download.remote_min_free_bytes)}."
+            f"{_format_bytes(project.gaia_download.remote_min_free_bytes)}"
         )
+        if active_estimate > 0:
+            raise _RemoteQuotaWaitError(message)
+        raise ValueError(f"Gaia remote quota guard blocked submission: {message}.")
 
 
 def _format_bytes(value: int) -> str:

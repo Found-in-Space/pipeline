@@ -38,6 +38,25 @@ def test_plan_download_batches_handles_small_and_over_cap() -> None:
     assert over_cap[0].hp3_values == (1,)
 
 
+def test_plan_download_batches_anchors_largest_under_cap_healpix_first() -> None:
+    batches = plan_download_batches(
+        [
+            HealpixCount(1, 9),
+            HealpixCount(2, 6),
+            HealpixCount(3, 4),
+            HealpixCount(4, 4),
+        ],
+        mode="full",
+        access_mode="authenticated",
+        row_cap=10,
+    )
+
+    assert batches[0].hp3_values == (1,)
+    assert batches[0].expected_rows == 9
+    assert not batches[0].over_cap
+    assert batches[1].expected_rows == 10
+
+
 def test_download_state_preserves_job_progress_on_replanning(tmp_path: Path) -> None:
     state_path = tmp_path / "state.sqlite"
     batch = plan_download_batches(
