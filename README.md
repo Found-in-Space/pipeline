@@ -71,6 +71,7 @@ templates only; catalog data is not stored in git.
 - [docs/README.md](docs/README.md) - documentation entry point.
 - [docs/run-configuration.md](docs/run-configuration.md) - usage, project file, Gaia query bundle, and publication run capture.
 - [docs/scientific-provenance.md](docs/scientific-provenance.md) - source catalogs, calculations, field contracts, and quality provenance.
+- [docs/pairing-resolution.md](docs/pairing-resolution.md) - policy-neutral Gaia/Hipparcos evidence, proposed pipeline resolution, corrected exploratory sizing, and readiness gaps.
 - [docs/output-contract.md](docs/output-contract.md) - merged HEALPix output, deduplication, overrides, reports, and sidecars.
 
 ## Development

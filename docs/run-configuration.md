@@ -70,6 +70,13 @@ uv run fis-pipeline merge build --project project.toml
 uv run fis-pipeline merge quality-report --project project.toml
 ```
 
+The current merge requires a pre-resolved one-to-one Gaia/Hipparcos map. The
+policy-neutral pairing evidence published by `../catalogs` is intentionally
+many-to-one and is not a valid direct input. A pipeline pairing-resolution
+stage is planned but not yet implemented; see
+[Gaia–Hipparcos pairing resolution](pairing-resolution.md). Until that stage
+exists, use H2BN or another independently resolved one-to-one map.
+
 ## Project File Contract
 
 `format_version = 1` is the supported project format. Paths may be absolute or
@@ -83,7 +90,8 @@ The important sections are:
 - `[gaia_download]`: Gaia Archive mode, access, row planning, async quota
   settings, optional source `WHERE` fragment, and optional carry field sets.
 - `[gaia-to-hip]`: cached Gaia DR3 `hipparcos2_best_neighbour` path, processed
-  crossmatch path, and optional supplemental mapping Parquets.
+  crossmatch path, and optional supplemental mapping Parquets that are already
+  resolved and one-to-one. Pairing-evidence Parquets are not supplemental maps.
 - `[hip]`: cached Hipparcos New Reduction ECSV path and processed Hipparcos
   Parquet path.
 - `[identifiers]`: source ECSV paths and processed sparse identifier sidecar
@@ -145,7 +153,9 @@ created the output. Capture at least:
 - the generated Gaia count and download ADQL bundle;
 - hashes for the ADQL files and downloaded source files;
 - the Gaia download state database or exported state summary;
-- any supplemental Gaia/Hipparcos mapping file supplied from a catalog release;
+- the exact accepted one-to-one Gaia/Hipparcos map used by the run;
+- the source pairing-evidence artifact, resolution decisions, policy version,
+  thresholds, report, and hashes once pairing resolution is implemented;
 - override YAML paths or packaged override version;
 - merge report, merge decisions, quality report, and output checksums.
 

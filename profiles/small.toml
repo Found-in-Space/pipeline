@@ -20,7 +20,8 @@ carry_field_sets = []
 [gaia-to-hip]
 download_ecsv = "data/catalogs/gaia_hipparcos2_best_neighbour.ecsv"
 output_parquet = "data/processed/gaia_hip_map.parquet"
-# supplemental_parquets = ["path/to/supplemental_gaia_hip_map.parquet"]
+# Only pre-resolved one-to-one maps; do not use policy-neutral pairing evidence.
+# supplemental_parquets = ["path/to/pre_resolved_gaia_hip_map.parquet"]
 
 [hip]
 download_ecsv = "data/catalogs/hipparcos2.ecsv"

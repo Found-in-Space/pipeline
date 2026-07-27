@@ -87,6 +87,21 @@ Gaia `photometry_quality` is half the GSP-Phot magnitude interval when
 `mg_gspphot_lower` and `mg_gspphot_upper` are valid; otherwise it is
 approximately `2.17 * astrometry_quality`.
 
+For visual comparisons between staged rows, use the apparent magnitude implied
+by the pipeline render fields:
+
+```text
+apparent_render_mag = mag_abs + distance_modulus
+```
+
+This is the brightness the dense row implies for a viewer at Earth. It is not
+generally identical to a raw Gaia G versus Hipparcos Hp comparison: G and Hp are
+different passbands, and the Gaia absolute-magnitude cascade may use GSP-Phot
+or extinction-corrected photometry. Pair-acceptance and bright-star safeguards
+belong to the downstream pipeline policy described in
+[Gaia–Hipparcos pairing resolution](pairing-resolution.md), not to the
+policy-neutral evidence catalog.
+
 Gaia effective temperature cascade:
 
 1. valid Gaia Teff in priority order: `teff_esphs`, `teff_gspspec`,

@@ -15,6 +15,10 @@ The documentation is intentionally small:
 - [Scientific provenance](scientific-provenance.md) describes the source
   catalogs, calculation engines, field requirements, formulas, and quality
   provenance encoded by the staged catalog pipelines.
+- [Gaia–Hipparcos pairing resolution](pairing-resolution.md) separates the
+  policy-neutral evidence catalog from pipeline acceptance policy, records the
+  corrected exploratory sizing figures, and lists the remaining implementation
+  gaps.
 - [Output contract](output-contract.md) defines the merged single-view output,
   deduplication policy, overrides, reports, and sidecars.
 
