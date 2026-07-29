@@ -73,7 +73,7 @@ def _run_hipparcos_pipeline(df: pd.DataFrame) -> pd.DataFrame:
     n_drop = int((~ok).sum())
     if n_drop:
         _LOG.info(
-            "Hipparcos: dropped %s / %s rows without finite distance_use_pc (invalid parallax)",
+            "Hipparcos: dropped %s / %s rows after distance estimation failed",
             n_drop,
             n_in,
         )
@@ -94,8 +94,8 @@ def main(
 ) -> None:
     """Run Hipparcos pipeline for one ECSV input and write parquet output.
 
-    ``limit``, if set, is applied after invalid-parallax rows are removed: at most
-    ``limit`` rows with finite ``distance_use_pc`` are written.
+    ``limit``, if set, is applied after distance estimation: at most ``limit``
+    rows with finite ``distance_use_pc`` are written.
     """
     if skip_if_exists and output_path.exists():
         print(f"Skipping {input_path} (output exists: {output_path})")

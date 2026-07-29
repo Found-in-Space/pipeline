@@ -8,9 +8,11 @@ import pytest
 from astropy.table import Table
 
 from foundinspace.pipeline.constants import (
+    DIST_SRC_HIP_EDSD,
     OUTPUT_COLS,
     TEFF_DEFAULT_K,
     TEFF_SRC_DEFAULT,
+    qf_dist_src,
     qf_needs_review,
     qf_teff_src,
 )
@@ -93,10 +95,10 @@ def test_run_pipeline_outputs_canonical_schema_and_source_fields():
     assert out["Hpmag"].tolist() == [7.0, 9.0]
 
 
-def test_run_pipeline_drops_invalid_parallax_rows():
+def test_run_pipeline_retains_invalid_parallax_rows_with_bayesian_distance():
     out = _run_hipparcos_pipeline(_sample_hip_df_with_invalid_parallax())
-    assert len(out) == 2
-    assert out["source_id"].tolist() == [1, 2]
+    assert len(out) == 3
+    assert out["source_id"].tolist() == [1, 2, 99]
     assert np.isfinite(out["mag_abs"].to_numpy()).all()
     r_pc = np.sqrt(
         out["x_icrs_pc"].astype(float) ** 2
@@ -104,6 +106,10 @@ def test_run_pipeline_drops_invalid_parallax_rows():
         + out["z_icrs_pc"].astype(float) ** 2
     )
     assert np.isfinite(r_pc).all()
+    fallback = out.loc[out["source_id"] == 99].iloc[0]
+    assert fallback["r_pc"] > 0
+    assert qf_dist_src(fallback["quality_flags"]) == DIST_SRC_HIP_EDSD
+    assert qf_needs_review(fallback["quality_flags"])
 
 
 def test_run_pipeline_mag_abs_matches_distance_modulus():
@@ -123,7 +129,9 @@ def test_low_significance_parallax_is_retained_but_marked_for_review():
 
     row = _run_hipparcos_pipeline(raw).iloc[0]
 
-    assert row["r_pc"] == pytest.approx(100.0)
+    assert row["r_pc"] != pytest.approx(100.0)
+    assert row["r_pc"] > 0.0
+    assert qf_dist_src(row["quality_flags"]) == DIST_SRC_HIP_EDSD
     assert qf_needs_review(row["quality_flags"])
 
 

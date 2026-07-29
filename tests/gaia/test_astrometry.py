@@ -29,6 +29,7 @@ def _base_gaia_df(**overrides):
         "pmdec": 0.0,
         "parallax": np.nan,
         "parallax_error": np.nan,
+        "ruwe": 1.0,
         "r_lo_geo": np.nan,
         "r_med_geo": np.nan,
         "r_hi_geo": np.nan,
@@ -76,9 +77,9 @@ def test_inverse_parallax_is_review_fallback_without_bj_posterior():
 
 
 def test_tier_a_bj_photogeo_best_score():
-    """Tier A: when DR3 invalid, BJ photogeometric can win; dist_src=BJ_PHOTOGEO."""
+    """Tier A: a trustworthy BJ photogeometric posterior can win."""
     df = _base_gaia_df(
-        parallax=0.0,
+        parallax=1.0,
         parallax_error=0.1,
         r_med_photogeo=400.0,
         r_lo_photogeo=350.0,
@@ -88,6 +89,7 @@ def test_tier_a_bj_photogeo_best_score():
     assert out["distance_use_pc"].iloc[0] == 400.0
     assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_BJ_PHOTOGEO
     assert qf_dist_valid(out["quality_flags"].iloc[0])
+    assert not qf_needs_review(out["quality_flags"].iloc[0])
     assert out["r_lo_pc"].iloc[0] == 350.0
     assert out["r_hi_pc"].iloc[0] == 450.0
 
@@ -95,7 +97,8 @@ def test_tier_a_bj_photogeo_best_score():
 def test_tier_a_bj_geo():
     """Tier A: BJ geometric can win; dist_src=BJ_GEO, r_lo_pc/r_hi_pc from geo."""
     df = _base_gaia_df(
-        parallax=0.0,
+        parallax=1.0,
+        parallax_error=0.1,
         r_med_geo=200.0,
         r_lo_geo=180.0,
         r_hi_geo=220.0,
@@ -105,6 +108,47 @@ def test_tier_a_bj_geo():
     assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_BJ_GEO
     assert out["r_lo_pc"].iloc[0] == 180.0
     assert out["r_hi_pc"].iloc[0] == 220.0
+
+
+def test_broad_bj_posterior_is_retained_as_weak_and_marked_for_review():
+    df = _base_gaia_df(
+        parallax=0.5,
+        parallax_error=0.2,
+        r_med_geo=2000.0,
+        r_lo_geo=1000.0,
+        r_hi_geo=3000.0,
+    )
+    out = select_astrometry_gaia(df)
+
+    assert out["distance_use_pc"].iloc[0] == 2000.0
+    assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_GEO_WEAK
+    assert qf_needs_review(out["quality_flags"].iloc[0])
+    assert out["astrometry_quality"].iloc[0] == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize(
+    ("parallax", "ruwe"),
+    [
+        (-0.5, 1.0),
+        (0.1, 1.0),
+        (0.5, 2.0),
+        (0.5, np.nan),
+    ],
+)
+def test_narrow_bj_posterior_with_weak_solution_is_marked_for_review(parallax, ruwe):
+    df = _base_gaia_df(
+        parallax=parallax,
+        parallax_error=0.1,
+        ruwe=ruwe,
+        r_med_photogeo=2000.0,
+        r_lo_photogeo=1800.0,
+        r_hi_photogeo=2200.0,
+    )
+    out = select_astrometry_gaia(df)
+
+    assert out["distance_use_pc"].iloc[0] == 2000.0
+    assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_PHOTOGEO_WEAK
+    assert qf_needs_review(out["quality_flags"].iloc[0])
 
 
 def test_tier_a_bj_posterior_outranks_raw_inverse_parallax():

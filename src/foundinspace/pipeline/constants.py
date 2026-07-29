@@ -30,6 +30,7 @@ DIST_SRC_PHOTOGEO_WEAK = 0x7  # Tier B: r_med_photogeo > 0 but fails quality
 DIST_SRC_PHOTO_MG_AG = 0x8  # Tier C: photometric (M_G + A_G)
 DIST_SRC_PRIOR = 0x9  # Tier D: fixed M_G prior
 DIST_SRC_OVERRIDE = 0xA  # Manual override / curated row (merger precedence; not used for Gaia-vs-Hip scoring)
+DIST_SRC_HIP_EDSD = 0xB  # Hipparcos parallax with an EDSD Bayesian distance prior
 DIST_SRC_MASK = 0x000F
 
 # bits 4-6: teff_src

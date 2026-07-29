@@ -6,6 +6,7 @@ from foundinspace.pipeline.common.astrometry import (
     fractional_distance_interval_width,
     fractional_parallax_error,
     parallax_distance_pc,
+    valid_parallax_mask,
 )
 from foundinspace.pipeline.common.quality_flags import pack_distance_flags
 from foundinspace.pipeline.constants import (
@@ -24,6 +25,9 @@ from foundinspace.pipeline.constants import (
 # Small model penalty used only to break close geometric/photogeometric
 # posterior-width comparisons. It is not part of the reported uncertainty.
 LAMBDA_PHOTOGEO = 0.01
+BJ_PRIMARY_MAX_FRACTIONAL_WIDTH = 0.2
+PARALLAX_PRIMARY_MAX_FRACTIONAL_ERROR = 0.2
+RUWE_PRIMARY_MAX = 1.4
 
 # Finite quality sentinels for non-primary tiers (no inf leakage into photometry_quality).
 QUALITY_FALLBACK_CATALOG = 10.0
@@ -78,8 +82,9 @@ def _first_valid_catalog(
 def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     """Gaia-only astrometry: multi-tier distance selection with explicit provenance.
 
-    Tier A  primary              – best valid BJ_GEO / BJ_PHOTOGEO posterior.
-    Tier B  fallback_catalog     – any positive finite catalog value:
+    Tier A  primary              – best trustworthy BJ_GEO / BJ_PHOTOGEO posterior.
+    Tier B  fallback_catalog     – weak-but-usable BJ posterior or any positive
+                                   finite catalog value:
                                    r_med_photogeo → r_med_geo → 1000/parallax (plx>0).
     Tier C  fallback_photometric – photometric distance from GSP-Phot M_G and A_G.
     Tier D  synthetic            – prior from apparent magnitude + fixed M_G.
@@ -146,6 +151,24 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     best_idx_a = np.argmin(selection_score, axis=1)
     score_a = raw_quality[np.arange(len(df)), best_idx_a]
     src_a_names = _src_a[best_idx_a]
+    ruwe = (
+        pd.to_numeric(df["ruwe"], errors="coerce").to_numpy(dtype=float)
+        if "ruwe" in df
+        else np.full(len(df), np.nan, dtype=float)
+    )
+    trustworthy_bj = (
+        any_valid
+        & (score_a <= BJ_PRIMARY_MAX_FRACTIONAL_WIDTH)
+        & valid_parallax_mask(plx, eplx)
+        & (f_dr3 <= PARALLAX_PRIMARY_MAX_FRACTIONAL_ERROR)
+        & np.isfinite(ruwe)
+        & (ruwe <= RUWE_PRIMARY_MAX)
+    )
+    weak_src_a_names = np.where(
+        src_a_names == "BJ_GEO",
+        "GEO_WEAK",
+        "PHOTOGEO_WEAK",
+    )
 
     plx_dist = parallax_distance_pc(plx)
     dist_a = np.where(
@@ -231,9 +254,13 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     quality[tier_b_dr3_with_error] = f_dr3[tier_b_dr3_with_error]
 
     distance[any_valid] = dist_a[any_valid]
-    source[any_valid] = src_a_names[any_valid]
+    source[any_valid] = np.where(
+        trustworthy_bj,
+        src_a_names,
+        weak_src_a_names,
+    )[any_valid]
     quality[any_valid] = score_a[any_valid]
-    review[any_valid] = False  # Tier A = trusted primary; B/C/D keep needs_review
+    review[any_valid] = ~trustworthy_bj[any_valid]
 
     # quality_flags: dist_src + status bits (phot_src OR'd in by assign_photometry_gaia)
     dist_src_bits = np.full(n, DIST_SRC_UNKNOWN, dtype=np.uint16)
@@ -254,8 +281,8 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     # BJ confidence intervals only where BJ is the chosen source
     df["r_lo_pc"] = np.nan
     df["r_hi_pc"] = np.nan
-    bj_geo = source == "BJ_GEO"
-    bj_photo = source == "BJ_PHOTOGEO"
+    bj_geo = (source == "BJ_GEO") | (source == "GEO_WEAK")
+    bj_photo = (source == "BJ_PHOTOGEO") | (source == "PHOTOGEO_WEAK")
     if bj_geo.any():
         df.loc[bj_geo, "r_lo_pc"] = df.loc[bj_geo, "r_lo_geo"].astype(float).values
         df.loc[bj_geo, "r_hi_pc"] = df.loc[bj_geo, "r_hi_geo"].astype(float).values

@@ -1,6 +1,7 @@
 import numpy as np
 
 from foundinspace.pipeline.common.astrometry import (
+    edsd_mode_distance_pc,
     finite_positive_mask,
     fractional_distance_interval_width,
     fractional_parallax_error,
@@ -8,6 +9,29 @@ from foundinspace.pipeline.common.astrometry import (
     plausible_distance_mask,
     valid_parallax_mask,
 )
+
+
+def test_edsd_mode_distance_is_finite_for_weak_and_nonpositive_parallaxes():
+    distances = edsd_mode_distance_pc(
+        np.array([0.01, 0.0, -1.0, np.nan]),
+        np.array([0.62, 1.0, 0.5, np.nan]),
+        length_scale_pc=1350.0,
+    )
+
+    assert np.isfinite(distances).all()
+    assert (distances > 0.0).all()
+    assert distances[0] < 10_000.0
+    assert distances[3] == 2700.0
+
+
+def test_edsd_mode_approaches_prior_mode_for_uninformative_measurement():
+    distance = edsd_mode_distance_pc(
+        np.array([0.0]),
+        np.array([1e9]),
+        length_scale_pc=1350.0,
+    )[0]
+
+    np.testing.assert_allclose(distance, 2700.0, rtol=1e-6)
 
 
 def test_parallax_distance_and_error_require_finite_positive_values():

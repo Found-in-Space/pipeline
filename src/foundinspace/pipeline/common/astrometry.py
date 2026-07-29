@@ -31,6 +31,66 @@ def parallax_distance_pc(parallax_mas: object) -> np.ndarray:
     return out
 
 
+def edsd_mode_distance_pc(
+    parallax_mas: object,
+    parallax_error_mas: object,
+    *,
+    length_scale_pc: float,
+) -> np.ndarray:
+    """Estimate distance with an exponentially decreasing space-density prior.
+
+    Returns the global posterior mode for
+    ``p(r) ∝ r² exp(-r/L) exp(-(parallax - 1/r)² / (2 sigma²))``.
+    Parallax is expressed in milliarcseconds and distance is solved in
+    kiloparsecs, where ``parallax_mas = 1 / distance_kpc``. The prior mode
+    ``2L`` is returned when the measurement uncertainty is unavailable.
+
+    This estimator remains finite for noisy, zero, and negative parallaxes.
+    It is intended as an explicitly reviewable fallback, not a replacement for
+    a catalogue posterior or a curated distance.
+    """
+    if not np.isfinite(length_scale_pc) or length_scale_pc <= 0:
+        raise ValueError("length_scale_pc must be finite and positive")
+
+    parallax, error = np.broadcast_arrays(
+        np.asarray(parallax_mas, dtype=float),
+        np.asarray(parallax_error_mas, dtype=float),
+    )
+    length_scale_kpc = float(length_scale_pc) / 1000.0
+    out_kpc = np.full(parallax.shape, 2.0 * length_scale_kpc, dtype=float)
+    valid = np.isfinite(parallax) & finite_positive_mask(error)
+
+    for flat_index in np.flatnonzero(valid):
+        measured = float(parallax.flat[flat_index])
+        sigma = float(error.flat[flat_index])
+        inverse_variance = 1.0 / (sigma * sigma)
+        roots = np.roots(
+            [
+                1.0 / length_scale_kpc,
+                -2.0,
+                measured * inverse_variance,
+                -inverse_variance,
+            ]
+        )
+        candidates = roots.real[
+            np.isclose(roots.imag, 0.0, rtol=0.0, atol=1e-10)
+            & np.isfinite(roots.real)
+            & (roots.real > 0.0)
+        ]
+        if not candidates.size:
+            continue
+        log_posterior = (
+            2.0 * np.log(candidates)
+            - candidates / length_scale_kpc
+            - 0.5
+            * ((measured - 1.0 / candidates) / sigma)
+            * ((measured - 1.0 / candidates) / sigma)
+        )
+        out_kpc.flat[flat_index] = candidates[int(np.argmax(log_posterior))]
+
+    return out_kpc * 1000.0
+
+
 def fractional_parallax_error(
     parallax_mas: object,
     parallax_error_mas: object,
