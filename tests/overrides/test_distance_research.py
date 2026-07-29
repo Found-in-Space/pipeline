@@ -41,13 +41,27 @@ def _target_frame() -> pd.DataFrame:
     )
 
 
-def test_packaged_tracker_is_exactly_the_81_unresolved_stars():
+def test_packaged_tracker_has_a_cited_distance_for_all_81_stars():
     tracker = load_distance_tracker()
 
     assert DEFAULT_TRACKER_PATH.is_file()
     assert len(tracker) == 81
     assert tracker["tracker_key"].nunique() == 81
-    assert tracker["status"].value_counts().to_dict() == {"unresolved": 81}
+    assert tracker["status"].value_counts().to_dict() == {
+        "resolved": 48,
+        "provisional": 33,
+    }
+    assert tracker["simbad_main_id"].str.strip().ne("").all()
+    assert tracker["gaia_source_id"].str.strip().ne("").sum() == 80
+    for column in (
+        "resolved_distance_pc",
+        "resolved_distance_error_pc",
+        "resolved_reference",
+        "resolution_notes",
+    ):
+        assert tracker[column].str.strip().ne("").all()
+    assert pd.to_numeric(tracker["resolved_distance_pc"]).gt(0).all()
+    assert pd.to_numeric(tracker["resolved_distance_error_pc"]).gt(0).all()
     assert tracker["official_source"].value_counts().to_dict() == {
         "hip": 53,
         "gaia": 28,
@@ -75,6 +89,16 @@ def test_load_tracker_rejects_duplicate_canonical_identity(tmp_path: Path):
     duplicate.to_csv(path, index=False)
 
     with pytest.raises(ValueError, match="duplicate target"):
+        load_distance_tracker(path)
+
+
+def test_load_tracker_rejects_researched_target_without_citation(tmp_path: Path):
+    tracker = pd.read_csv(DEFAULT_TRACKER_PATH, dtype=str, keep_default_na=False)
+    tracker.loc[0, "resolved_reference"] = ""
+    path = tmp_path / "tracker.csv"
+    tracker.to_csv(path, index=False)
+
+    with pytest.raises(ValueError, match="blank resolved_reference"):
         load_distance_tracker(path)
 
 
@@ -145,7 +169,7 @@ def test_query_simbad_preserves_alias_and_bibliography():
     client = FakeSimbad()
     evidence = query_simbad(_target_frame(), client=client)
 
-    assert client.fields == ("parallax", "sp", "otype", "distance")
+    assert client.fields == ("parallax", "sp", "otype", "distance", "ids")
     assert len(evidence) == 5
     assert set(evidence["tracker_key"]) == {"hip:42"}
     assert set(evidence["match_status"]) == {"found"}
@@ -207,6 +231,61 @@ def test_query_gaia_uses_best_neighbour_and_bailer_jones():
     assert row["match_kind"] == "tracker_gaia_id"
     assert row["r_med_photogeo"] == 500.0
     assert row["parallax_snr"] == 10.0
+
+
+def test_query_gaia_uses_simbad_cross_identifier_when_official_map_misses():
+    target = _target_frame().copy()
+    target["gaia_source_id"] = ""
+    simbad = pd.DataFrame(
+        {
+            "tracker_key": ["hip:42"],
+            "match_status": ["found"],
+            "ids": ["HIP 42|Gaia DR3 987654321|HD 42"],
+        }
+    )
+
+    class FakeJob:
+        def __init__(self, result):
+            self.result = result
+
+        def get_results(self):
+            return self.result
+
+    class FakeGaia:
+        @staticmethod
+        def launch_job_async(query):
+            if "hipparcos2_best_neighbour" in query:
+                return FakeJob(
+                    Table(
+                        names=(
+                            "source_id",
+                            "original_ext_source_id",
+                            "angular_distance",
+                            "number_of_neighbours",
+                        )
+                    )
+                )
+            assert "987654321" in query
+            return FakeJob(
+                Table(
+                    {
+                        "source_id": [987654321],
+                        "ra": [10.0],
+                        "dec": [-20.0],
+                        "parallax": [2.0],
+                        "parallax_error": [0.2],
+                    }
+                )
+            )
+
+    evidence = query_gaia(
+        target,
+        simbad_evidence=simbad,
+        client=FakeGaia,
+    )
+
+    assert evidence.loc[0, "source_id"] == "987654321"
+    assert evidence.loc[0, "match_kind"] == "simbad_gaia_dr3_id"
 
 
 def test_query_starhorse_converts_kpc_percentiles_to_pc():

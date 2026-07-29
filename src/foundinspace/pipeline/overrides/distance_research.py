@@ -1,4 +1,4 @@
-"""Collect external distance evidence for unresolved override targets."""
+"""Collect external distance evidence for tracked override targets."""
 
 from __future__ import annotations
 
@@ -33,7 +33,12 @@ TRACKER_REQUIRED_COLUMNS = (
     "current_distance_source",
     "reason_for_external_search",
     "next_action",
+    "resolved_distance_pc",
+    "resolved_distance_error_pc",
+    "resolved_reference",
+    "resolution_notes",
 )
+TRACKER_STATUSES = frozenset({"unresolved", "provisional", "resolved"})
 
 
 def _id_string(value: object) -> str:
@@ -69,6 +74,12 @@ def load_distance_tracker(path: Path = DEFAULT_TRACKER_PATH) -> pd.DataFrame:
 
     frame = frame.copy()
     for index, row in frame.iterrows():
+        status = str(row["status"]).strip().lower()
+        if status not in TRACKER_STATUSES:
+            raise ValueError(
+                f"row {index + 2}: status must be unresolved, provisional, "
+                f"or resolved, got {status!r}"
+            )
         source = str(row["official_source"]).strip().lower()
         if source not in {"gaia", "hip"}:
             raise ValueError(
@@ -97,6 +108,32 @@ def load_distance_tracker(path: Path = DEFAULT_TRACKER_PATH) -> pd.DataFrame:
             )
         if not str(row["reason_for_external_search"]).strip():
             raise ValueError(f"row {index + 2}: external-search reason is blank")
+        if status != "unresolved":
+            for field in (
+                "resolved_distance_pc",
+                "resolved_distance_error_pc",
+                "resolved_reference",
+                "resolution_notes",
+            ):
+                if not str(row[field]).strip():
+                    raise ValueError(
+                        f"row {index + 2}: {status} target has blank {field}"
+                    )
+            for field in (
+                "resolved_distance_pc",
+                "resolved_distance_error_pc",
+            ):
+                try:
+                    value = float(row[field])
+                except ValueError as exc:
+                    raise ValueError(
+                        f"row {index + 2}: {field} must be numeric"
+                    ) from exc
+                if not np.isfinite(value) or value <= 0:
+                    raise ValueError(
+                        f"row {index + 2}: {field} must be positive and finite"
+                    )
+        frame.at[index, "status"] = status
         frame.at[index, "official_source"] = source
         frame.at[index, "official_source_id"] = official_id
         frame.at[index, "gaia_source_id"] = gaia_id
@@ -200,7 +237,7 @@ def query_simbad(
 
     # ``distance`` expands to SIMBAD's mesDistance table and preserves method
     # and bibliography; ``parallax`` is the database's selected basic value.
-    client.add_votable_fields("parallax", "sp", "otype", "distance")
+    client.add_votable_fields("parallax", "sp", "otype", "distance", "ids")
     aliases = build_simbad_aliases(targets)
     if aliases.empty:
         return aliases.assign(service=pd.Series(dtype=str))
@@ -310,7 +347,12 @@ def _gaia_results(query: str, client) -> pd.DataFrame:
     return table_to_frame(client.launch_job_async(query).get_results())
 
 
-def query_gaia(targets: pd.DataFrame, *, client=None) -> pd.DataFrame:
+def query_gaia(
+    targets: pd.DataFrame,
+    *,
+    simbad_evidence: pd.DataFrame | None = None,
+    client=None,
+) -> pd.DataFrame:
     """Resolve HIP aliases and fetch Gaia/Bailer-Jones evidence by exact ID."""
     if client is None:
         from astroquery.gaia import Gaia
@@ -331,6 +373,27 @@ def query_gaia(targets: pd.DataFrame, *, client=None) -> pd.DataFrame:
                     "number_of_neighbours": np.nan,
                 }
             )
+
+    if simbad_evidence is not None and not simbad_evidence.empty:
+        resolved = simbad_evidence.loc[
+            simbad_evidence.get("match_status", "").eq("found")
+            & simbad_evidence.get("ids", "").fillna("").astype(str).ne(""),
+            ["tracker_key", "ids"],
+        ].drop_duplicates("tracker_key")
+        for row in resolved.to_dict(orient="records"):
+            match = pd.Series([row["ids"]]).str.extract(r"Gaia DR3 (\d+)").iloc[0, 0]
+            gaia_id = _id_string(match)
+            if gaia_id:
+                mappings.append(
+                    {
+                        "tracker_key": row["tracker_key"],
+                        "source_id": gaia_id,
+                        "match_kind": "simbad_gaia_dr3_id",
+                        "hip_source_id": "",
+                        "angular_distance": np.nan,
+                        "number_of_neighbours": np.nan,
+                    }
+                )
 
     hip_targets = targets.loc[targets["hip_source_id"].ne("")]
     if not hip_targets.empty:
@@ -541,6 +604,7 @@ def build_evidence_summary(
                 "query_name",
                 "alias_kind",
                 "main_id",
+                "ids",
                 "otype",
                 "otype_txt",
                 "sp_type",
@@ -707,7 +771,7 @@ def run_distance_research(
             if service == "simbad":
                 result = query_simbad(targets)
             elif service == "gaia":
-                result = query_gaia(targets)
+                result = query_gaia(targets, simbad_evidence=evidence["simbad"])
             else:
                 result = query_starhorse(targets, evidence["gaia"])
             evidence[service] = result

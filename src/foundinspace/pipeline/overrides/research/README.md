@@ -5,14 +5,38 @@ pipeline distance remains unsuitable for a release build after the automatic
 astrometry policy is applied.
 
 This is not an executable override file. The override loader reads YAML only
-from `overrides/data`, so unresolved research rows cannot accidentally change a
-build. Each row records the canonical pipeline identity, useful aliases, the
-current fallback, and the concrete reason external evidence is required.
+from `overrides/data`, so research results cannot accidentally change a build.
+Each row records the canonical pipeline identity, useful aliases, the current
+fallback, the reason external evidence was required, and the best distance
+found so far.
 
-Set `status` to `resolved` only after filling `resolved_distance_pc`, its
-uncertainty where available, and a durable bibliographic reference. A reviewed
-resolved row can then be promoted to a versioned `replace` override in
-`overrides/data`.
+All 81 targets now have a cited distance and uncertainty. The tracker contains
+48 `resolved` rows and 33 `provisional` rows:
+
+- `resolved` means the evidence is strong enough for override review. It is not
+  automatically executable; promotion still requires an explicit versioned
+  `replace` override in `overrides/data`.
+- `provisional` means the row contains the best published or catalogued value
+  currently available, but a conflict, component ambiguity, catalog quality
+  flag, or membership question makes automatic promotion premature.
+- `unresolved` remains a valid status for future additions, but no row in this
+  release is unresolved.
+
+The evidence preference is direct geometric, orbital, or maser work; then a
+well-established physical system, cluster, or host-galaxy distance; then a
+clean photo-astrometric catalog posterior; and finally a flagged or legacy
+catalog estimate. The reference and caveat used for each choice are preserved
+in the row.
+
+Two systematic failures account for much of the original list. SIMBAD
+identifiers recovered exact Gaia DR3 identities for 35 Hipparcos targets missed
+by the official best-neighbour crossmatch, and targeted cone searches recovered
+another three; only Alnilam lacks a usable Gaia primary. This replaces generic
+multi-kpc EDSD fallbacks with object-specific estimates. Nineteen Magellanic
+Cloud members instead require their LMC or SMC host distance: Galactic-prior
+Gaia estimates for those stars are known foreground solutions and are
+deliberately rejected. Specialist literature supplies the strongest values for
+several bright variables and multiple systems.
 
 Run the catalog search with:
 
