@@ -35,7 +35,7 @@ def test_iter_override_source_files_uses_explicit_paths_in_given_order(
 
 def test_load_override_source_texts_reads_packaged_yaml():
     sources = load_override_source_texts()
-    assert "sun.yaml" in sources
+    assert set(sources) == {"sun.yaml"}
     assert "manual.sun.add.v1" in sources["sun.yaml"]
 
 
@@ -67,22 +67,35 @@ def test_load_normalized_override_stars_fills_cartesian_for_spherical_fixture(
     assert np.allclose([b["x_icrs_pc"], b["y_icrs_pc"], b["z_icrs_pc"]], [ex, ey, ez])
 
 
-def test_load_normalized_override_stars_fills_cartesian_for_alpha_cen():
+def test_sun_is_sole_packaged_override_with_checked_provenance():
     stars = load_normalized_override_stars()
-    by_id = {s["override_id"]: s for s in stars}
-    a = by_id["manual.alpha_cen_a.replace.v1"]
-    assert "x_icrs_pc" in a and "y_icrs_pc" in a and "z_icrs_pc" in a
-    ex, ey, ez = icrs_spherical_to_cartesian_pc(
-        float(a["ra_deg"]),
-        float(a["dec_deg"]),
-        float(a["r_pc"]),
-    )
-    assert np.allclose([a["x_icrs_pc"], a["y_icrs_pc"], a["z_icrs_pc"]], [ex, ey, ez])
-
-
-def test_sun_override_keeps_explicit_cartesian():
-    stars = load_normalized_override_stars()
-    sun = next(s for s in stars if s["override_id"] == "manual.sun.add.v1")
+    assert len(stars) == 1
+    sun = stars[0]
+    assert sun["override_id"] == "manual.sun.add.v1"
+    assert sun["action"] == "add"
+    assert sun["source"] == "manual"
+    assert sun["source_id"] == "sun"
     assert sun["x_icrs_pc"] == 0.0
     assert sun["y_icrs_pc"] == 0.0
     assert sun["z_icrs_pc"] == 0.0
+    assert sun["ra_deg"] == 0.0
+    assert sun["dec_deg"] == 0.0
+    assert sun["r_pc"] == 0.0
+    assert sun["mag_abs"] == 4.81
+    assert sun["mag_band"] == "Johnson_V"
+    assert sun["mag_system"] == "vegamag"
+    assert sun["teff"] == 5772
+
+    provenance = sun["provenance"]
+    assert provenance["astrometry"]["value_kind"] == "synthetic_dataset_convention"
+    assert (
+        provenance["absolute_magnitude"]["source"]["doi"] == "10.3847/1538-4365/aabfdf"
+    )
+    assert (
+        provenance["effective_temperature"]["value_kind"]
+        == "nominal_exact_conversion_constant"
+    )
+    assert (
+        provenance["effective_temperature"]["source"]["doi"]
+        == "10.3847/0004-6256/152/2/41"
+    )

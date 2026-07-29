@@ -69,6 +69,17 @@ Manual overrides have highest precedence:
 - `replace` substitutes curated physical data and suppresses the partner row;
 - `add` inserts a manual row.
 
+The packaged default override set contains exactly one row:
+`manual.sun.add.v1`. It adds the Sun as the synthetic origin object. Other
+review targets and Gaia–Hipparcos pairing candidates are evidence inputs, not
+packaged overrides. A project may still supply explicit custom override YAML,
+which must be pinned and captured in the publication provenance.
+
+The Sun source record is
+`src/foundinspace/pipeline/overrides/data/sun.yaml`. It distinguishes synthetic
+origin coordinates from published physical values and records structured
+citations for Johnson V absolute magnitude and nominal effective temperature.
+
 For automatic matched-pair decisions, Gaia wins by default. Hipparcos can win
 only when the crossmatch is unambiguous, the Hipparcos solution type is the
 standard single-star solution, and its astrometry score beats Gaia by the
