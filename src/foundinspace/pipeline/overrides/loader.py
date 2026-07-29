@@ -11,7 +11,8 @@ import yaml
 
 _YAML_SUFFIXES = (".yaml", ".yml")
 
-# Packaged default: sibling `data/` next to this module (editable + wheel with packaged YAML).
+# Optional packaged defaults live in sibling `data/`. The directory is empty in
+# the core distribution; controlled projects normally select explicit YAML.
 _PACKAGE_DATA_DIR = Path(__file__).resolve().parent / "data"
 
 

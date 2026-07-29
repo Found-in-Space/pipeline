@@ -73,6 +73,7 @@ templates only; catalog data is not stored in git.
 - [docs/scientific-provenance.md](docs/scientific-provenance.md) - source catalogs, calculations, field contracts, and quality provenance.
 - [docs/pairing-resolution.md](docs/pairing-resolution.md) - policy-neutral Gaia/Hipparcos evidence, proposed pipeline resolution, corrected exploratory sizing, and readiness gaps.
 - [docs/output-contract.md](docs/output-contract.md) - merged HEALPix output, deduplication, overrides, reports, and sidecars.
+- [docs/sun-reference-policy.md](docs/sun-reference-policy.md) - why the solar origin and optional Sun object are outside the core stellar catalog.
 
 ## Development
 

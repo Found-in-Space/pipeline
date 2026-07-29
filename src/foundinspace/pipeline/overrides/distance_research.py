@@ -16,9 +16,7 @@ from foundinspace.pipeline.common.gaia_credentials import (
     login_gaia_from_environment_if_available,
 )
 
-DEFAULT_TRACKER_PATH = (
-    Path(__file__).parent / "research" / "distance-resolution-v1.csv"
-)
+DEFAULT_TRACKER_PATH = Path(__file__).parent / "research" / "distance-resolution-v1.csv"
 DEFAULT_OUTPUT_DIR = Path("downloads/distance-resolution-v1")
 VIZIER_TAP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap"
 STARHORSE_TABLE = '"I/354/starhorse2021"'
@@ -82,9 +80,7 @@ def load_distance_tracker(path: Path = DEFAULT_TRACKER_PATH) -> pd.DataFrame:
             )
         source = str(row["official_source"]).strip().lower()
         if source not in {"gaia", "hip"}:
-            raise ValueError(
-                f"row {index + 2}: official_source must be gaia or hip"
-            )
+            raise ValueError(f"row {index + 2}: official_source must be gaia or hip")
         official_id = _validate_id(
             row["official_source_id"],
             f"row {index + 2} official_source_id",
@@ -139,9 +135,7 @@ def load_distance_tracker(path: Path = DEFAULT_TRACKER_PATH) -> pd.DataFrame:
         frame.at[index, "gaia_source_id"] = gaia_id
         frame.at[index, "hip_source_id"] = hip_id
 
-    frame["tracker_key"] = (
-        frame["official_source"] + ":" + frame["official_source_id"]
-    )
+    frame["tracker_key"] = frame["official_source"] + ":" + frame["official_source_id"]
     duplicates = frame["tracker_key"].duplicated(keep=False)
     if bool(duplicates.any()):
         values = sorted(frame.loc[duplicates, "tracker_key"].unique())
@@ -211,9 +205,11 @@ def table_to_frame(table: Table | pd.DataFrame | None) -> pd.DataFrame:
     frame.columns = [_normalise_column_name(column) for column in frame.columns]
     for column in frame.columns:
         frame[column] = frame[column].map(
-            lambda value: value.decode("utf-8", errors="replace")
-            if isinstance(value, bytes)
-            else value
+            lambda value: (
+                value.decode("utf-8", errors="replace")
+                if isinstance(value, bytes)
+                else value
+            )
         )
     return frame
 
@@ -429,13 +425,13 @@ def query_gaia(
             columns=["tracker_key", "source_id", "match_kind", "service"]
         )
     mapping["source_id"] = mapping["source_id"].map(_id_string)
-    mapping = mapping.drop_duplicates(
-        subset=["tracker_key", "source_id"], keep="first"
-    )
+    mapping = mapping.drop_duplicates(subset=["tracker_key", "source_id"], keep="first")
 
     details = _gaia_results(build_gaia_details_query(mapping["source_id"]), client)
     details["source_id"] = details["source_id"].map(_id_string)
-    evidence = mapping.merge(details, how="left", on="source_id", validate="many_to_one")
+    evidence = mapping.merge(
+        details, how="left", on="source_id", validate="many_to_one"
+    )
     parallax = pd.to_numeric(evidence.get("parallax"), errors="coerce")
     parallax_error = pd.to_numeric(evidence.get("parallax_error"), errors="coerce")
     evidence["parallax_snr"] = np.where(
@@ -798,9 +794,7 @@ def run_distance_research(
     manifest_path = output_dir / "manifest.json"
     _write_csv(summary, summary_path)
     _write_csv(
-        pd.DataFrame.from_records(
-            errors, columns=["service", "error_type", "message"]
-        ),
+        pd.DataFrame.from_records(errors, columns=["service", "error_type", "message"]),
         error_path,
     )
 

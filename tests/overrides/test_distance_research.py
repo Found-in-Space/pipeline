@@ -309,9 +309,7 @@ def test_query_starhorse_converts_kpc_percentiles_to_pc():
             assert 'sh."Source" IN (123456789)' in query
             return FakeJob()
 
-    evidence = query_starhorse(
-        _target_frame(), pd.DataFrame(), client=FakeTap()
-    )
+    evidence = query_starhorse(_target_frame(), pd.DataFrame(), client=FakeTap())
 
     row = evidence.iloc[0]
     assert row["match_status"] == "found"

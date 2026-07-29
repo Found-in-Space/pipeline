@@ -1,0 +1,1613 @@
+description: Reviewed distance replacements for the resolved subset of the 81-star poor-distance candidate
+  cohort. Provisional rows are deliberately excluded.
+dataset:
+  schema_version: 1
+  dataset_id: fis.distance-resolution-v1.resolved
+  override_policy_version: distance_resolution_v1
+  selection: status == resolved
+  resolved_row_count: 48
+  excluded_provisional_row_count: 33
+  inputs:
+    distance_resolution_tracker:
+      filename: distance-resolution-v1.csv
+      sha256: f5b07f745de8ca2521ae615b5f57f3fc9d8004dc2e3717250909ab989466120f
+    candidate_review:
+      filename: external-distance-required.parquet
+      sha256: 3461a681183100952105e27590929ad04d7a926eb30fe869820555eee44acaf7
+    pipeline_candidates:
+      filename: current-pipeline-candidates.parquet
+      sha256: 0e5337f992c1a1ce0faa66136da0f2d9cb66a92ffb64ff94d723c5f45af4dbe2
+    gaia_staged:
+      filename: gaia-staged.parquet
+      sha256: 91f7c5287ffb04ea5b1250bbc97fee238eb03e54aac8cc44596202e025fd83a4
+    hip_staged:
+      filename: hip-staged.parquet
+      sha256: f0502f6bd9dc04b64605c82245d461d712a0505ac7ef639e9945f646b3eeb94b
+stars:
+- override_id: distance.hip.6371.replace.v1
+  action: replace
+  source: hip
+  source_id: '6371'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 20.466475626921646
+  dec_deg: 50.12197362373771
+  r_pc: 603.57
+  mag_abs: -2.1964381764170575
+  teff: 4506.152810844546
+  identifiers:
+    gaia_source_id: '400665958469700608'
+    hip_id: '6371'
+    simbad_main_id: HD   8160
+  provenance:
+    schema_version: 1
+    tracker_key: hip:6371
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 603.57
+      symmetric_error_pc: 17.2809
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 588.12–620.85 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=1.55. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 6.707200050354464
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:6371
+      photometry_donor: hip:6371
+      temperature_donor: hip:6371
+- override_id: distance.hip.90910.replace.v1
+  action: replace
+  source: hip
+  source_id: '90910'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 278.1606621082639
+  dec_deg: 4.296319901249658
+  r_pc: 556.769
+  mag_abs: -1.2889750362178027
+  teff: 3396.5468009543556
+  identifiers:
+    gaia_source_id: '4283444727691310592'
+    hip_id: '90910'
+    simbad_main_id: HD 171089
+  provenance:
+    schema_version: 1
+    tracker_key: hip:90910
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 556.769
+      symmetric_error_pc: 100.727
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 456.04–559.96 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=2.04. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 7.439400196078717
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:90910
+      photometry_donor: hip:90910
+      temperature_donor: hip:90910
+- override_id: distance.hip.34935.replace.v1
+  action: replace
+  source: hip
+  source_id: '34935'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 108.43564296163488
+  dec_deg: -5.155530563749951
+  r_pc: 1024.87
+  mag_abs: -2.7064439169686736
+  teff: 5140.057897310126
+  identifiers:
+    gaia_source_id: '3059185637349794048'
+    hip_id: '34935'
+    simbad_main_id: BD-04  1862
+  provenance:
+    schema_version: 1
+    tracker_key: hip:34935
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 1024.87
+      symmetric_error_pc: 136.985
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 972.32–1161.86 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=1.53. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 7.346899986267111
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:34935
+      photometry_donor: hip:34935
+      temperature_donor: hip:34935
+- override_id: distance.hip.27847.replace.v1
+  action: replace
+  source: hip
+  source_id: '27847'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 88.37637340160154
+  dec_deg: 25.07339758249599
+  r_pc: 670.661
+  mag_abs: -1.4621151181425045
+  teff: 4644.108371453665
+  identifiers:
+    gaia_source_id: '3428250287309752704'
+    hip_id: '27847'
+    simbad_main_id: HD  39416
+  provenance:
+    schema_version: 1
+    tracker_key: hip:27847
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 670.661
+      symmetric_error_pc: 54.3616
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 616.30–717.28 pc; fidelity=0.999; SH_OUTFLAG=0000;
+        Gaia RUWE=2.10. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 7.670400142670227
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:27847
+      photometry_donor: hip:27847
+      temperature_donor: hip:27847
+- override_id: distance.hip.86601.replace.v1
+  action: replace
+  source: hip
+  source_id: '86601'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 265.4587816473753
+  dec_deg: 15.415887953749412
+  r_pc: 595.271
+  mag_abs: -0.9659737010526914
+  teff: 3646.268916585341
+  identifiers:
+    gaia_source_id: '4500773165232873728'
+    hip_id: '86601'
+    simbad_main_id: BD+15  3251
+  provenance:
+    schema_version: 1
+    tracker_key: hip:86601
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 595.271
+      symmetric_error_pc: 60.2073
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 538.29–655.48 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=5.44. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 7.9075999259950365
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:86601
+      photometry_donor: hip:86601
+      temperature_donor: hip:86601
+- override_id: distance.hip.1056.replace.v1
+  action: replace
+  source: hip
+  source_id: '1056'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 3.289834791795928
+  dec_deg: -27.813552419944713
+  r_pc: 291.06
+  mag_abs: 1.013087558062093
+  teff: 4999.097996619657
+  identifiers:
+    gaia_source_id: '2321529196147639296'
+    hip_id: '1056'
+    simbad_main_id: HD    892
+  provenance:
+    schema_version: 1
+    tracker_key: hip:1056
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 291.06
+      symmetric_error_pc: 8.02663
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 284.08–299.09 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=1.46. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 8.33300018311063
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:1056
+      photometry_donor: hip:1056
+      temperature_donor: hip:1056
+- override_id: distance.hip.85773.replace.v1
+  action: replace
+  source: hip
+  source_id: '85773'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 262.89455539804436
+  dec_deg: -36.07699048997527
+  r_pc: 560.162
+  mag_abs: 0.11773143959666932
+  teff: 3622.873619578351
+  identifiers:
+    gaia_source_id: '5974713650999513600'
+    hip_id: '85773'
+    simbad_main_id: HD 158564
+  provenance:
+    schema_version: 1
+    tracker_key: hip:85773
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 560.162
+      symmetric_error_pc: 74.3666
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 530.64–634.53 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=2.87. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 8.859299659731066
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:85773
+      photometry_donor: hip:85773
+      temperature_donor: hip:85773
+- override_id: distance.hip.61780.replace.v1
+  action: replace
+  source: hip
+  source_id: '61780'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 189.93799328446897
+  dec_deg: 44.88190529099307
+  r_pc: 916.357
+  mag_abs: -0.722923072343006
+  teff: 4348.348027705602
+  identifiers:
+    gaia_source_id: '1541106185035156480'
+    hip_id: '61780'
+    simbad_main_id: BD+45  2057
+  provenance:
+    schema_version: 1
+    tracker_key: hip:61780
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 916.357
+      symmetric_error_pc: 86.4001
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 844.27–1002.76 pc; fidelity=0.998; SH_OUTFLAG=0000;
+        Gaia RUWE=2.95. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 9.087400436415397
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:61780
+      photometry_donor: hip:61780
+      temperature_donor: hip:61780
+- override_id: distance.gaia.3326740865570982400.replace.v1
+  action: replace
+  source: gaia
+  source_id: '3326740865570982400'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 100.24441664679024
+  dec_deg: 9.895739133621287
+  r_pc: 719.0
+  mag_abs: 0.852033236439933
+  teff: 8119.0
+  identifiers:
+    gaia_source_id: '3326740865570982400'
+    simbad_main_id: '*  15 Mon'
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:3326740865570982400
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 719.0
+      symmetric_error_pc: 16.0
+      reference: Maiz Apellaniz 2019, A&A 630 A119 (doi:10.1051/0004-6361/201935885)
+      notes: Robust Gaia DR2 distance to NGC 2264, whose main ionizing multiple is 15 Mon. The pipeline
+        Gaia source is G=10.14 rather than the combined G≈4.66 system, so this also flags a component/photometry
+        mismatch.
+    preserved_payload:
+      apparent_magnitude: 10.135677688354345
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:3326740865570982400
+      photometry_donor: gaia:3326740865570982400
+      temperature_donor: gaia:3326740865570982400
+- override_id: distance.hip.117896.replace.v1
+  action: replace
+  source: hip
+  source_id: '117896'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 358.7108364609517
+  dec_deg: 45.76568993749658
+  r_pc: 850.342
+  mag_abs: 0.012931964805254381
+  teff: 9585.441196100863
+  identifiers:
+    gaia_source_id: '1926365301241461888'
+    hip_id: '117896'
+    simbad_main_id: HD 224068
+  provenance:
+    schema_version: 1
+    tracker_key: hip:117896
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 850.342
+      symmetric_error_pc: 156.528
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 821.94–1006.87 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=2.15. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 9.66090011596696
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:117896
+      photometry_donor: hip:117896
+      temperature_donor: hip:117896
+- override_id: distance.hip.95199.replace.v1
+  action: replace
+  source: hip
+  source_id: '95199'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 290.503769959744
+  dec_deg: -46.764885504991575
+  r_pc: 575.003
+  mag_abs: 0.8880498606775635
+  teff: 4735.546760591745
+  identifiers:
+    gaia_source_id: '6663290470077923456'
+    hip_id: '95199'
+    simbad_main_id: HD 181246
+  provenance:
+    schema_version: 1
+    tracker_key: hip:95199
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 575.003
+      symmetric_error_pc: 39.4827
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 535.52–601.90 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=6.11. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 9.686400413517427
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:95199
+      photometry_donor: hip:95199
+      temperature_donor: hip:95199
+- override_id: distance.hip.114789.replace.v1
+  action: replace
+  source: hip
+  source_id: '114789'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 348.78769274124437
+  dec_deg: -50.85525718093507
+  r_pc: 281.71
+  mag_abs: 3.1206891137018875
+  teff: 6739.655060273889
+  identifiers:
+    gaia_source_id: '6502330214106579712'
+    hip_id: '114789'
+    simbad_main_id: HD 219269
+  provenance:
+    schema_version: 1
+    tracker_key: hip:114789
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: prior_authority_review_likely_bad;hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 281.71
+      symmetric_error_pc: 12.3223
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 269.39–286.50 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=3.66. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 10.369700431835161
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:114789
+      photometry_donor: hip:114789
+      temperature_donor: hip:114789
+- override_id: distance.hip.117863.replace.v1
+  action: replace
+  source: hip
+  source_id: '117863'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 358.59593000622834
+  dec_deg: 57.499368040161634
+  r_pc: 2800.0
+  mag_abs: -8.185658156711098
+  teff: 4091.118590597699
+  identifiers:
+    gaia_source_id: '1998148532777850880'
+    hip_id: '117863'
+    simbad_main_id: '* rho Cas'
+  provenance:
+    schema_version: 1
+    tracker_key: hip:117863
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 2800.0
+      symmetric_error_pc: 300.0
+      reference: Anugu et al. 2024, ApJ 974 113 (doi:10.3847/1538-4357/ad6b2b); Quintana et al. 2025,
+        A&A 697 A47
+      notes: Gaia is corrupted by hypergiant surface/photocenter motion. CHARA adopts 2.5–3.1 kpc and
+        modern Cas OB5 work places the association at 2.5–3.0 kpc; 2.8±0.3 kpc represents that literature
+        range.
+    preserved_payload:
+      apparent_magnitude: 4.050132
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:1998148532777850880
+      photometry_donor: gaia:1998148532777850880
+      temperature_donor: gaia:1998148532777850880
+- override_id: distance.hip.24988.replace.v1
+  action: replace
+  source: hip
+  source_id: '24988'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 80.25714520472559
+  dec_deg: -65.80067073261095
+  r_pc: 49590.0
+  mag_abs: -9.03484554145555
+  teff: 6184.0
+  identifiers:
+    gaia_source_id: '4660601611448785152'
+    hip_id: '24988'
+    simbad_main_id: HD 271182
+  provenance:
+    schema_version: 1
+    tracker_key: hip:24988
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 9.442125
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4660601611448785152
+      photometry_donor: gaia:4660601611448785152
+      temperature_donor: gaia:4660601611448785152
+- override_id: distance.gaia.4685991705804612992.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4685991705804612992'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 14.587783208402756
+  dec_deg: -72.58402514789537
+  r_pc: 62440.0
+  mag_abs: -6.146565471951899
+  teff: 3538.9133746687235
+  identifiers:
+    gaia_source_id: '4685991705804612992'
+    simbad_main_id: SkKM 172
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4685991705804612992
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 62440.0
+      symmetric_error_pc: 3000.0
+      reference: Graczyk et al. 2020, ApJ 904 13 (2020ApJ...904...13G; doi:10.3847/1538-4357/abbb2b)
+      notes: Confirmed SMC massive-star identity. Adopt the 62.44 kpc eclipsing-binary geometric center
+        distance; the 3.0 kpc uncertainty deliberately represents the SMC line-of-sight depth and dominates
+        the 0.94 kpc center error. Gaia foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 12.830749
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4685991705804612992
+      photometry_donor: gaia:4685991705804612992
+      temperature_donor: gaia:4685991705804612992
+- override_id: distance.gaia.4687436704549343488.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4687436704549343488'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 16.825922272930207
+  dec_deg: -72.46768812519718
+  r_pc: 62440.0
+  mag_abs: -9.6715054719519
+  teff: 5108.458977320668
+  identifiers:
+    gaia_source_id: '4687436704549343488'
+    simbad_main_id: HD   6884
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4687436704549343488
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 62440.0
+      symmetric_error_pc: 3000.0
+      reference: Graczyk et al. 2020, ApJ 904 13 (2020ApJ...904...13G; doi:10.3847/1538-4357/abbb2b)
+      notes: Confirmed SMC massive-star identity. Adopt the 62.44 kpc eclipsing-binary geometric center
+        distance; the 3.0 kpc uncertainty deliberately represents the SMC line-of-sight depth and dominates
+        the 0.94 kpc center error. Gaia foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 9.305809
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4687436704549343488
+      photometry_donor: gaia:4687436704549343488
+      temperature_donor: gaia:4687436704549343488
+- override_id: distance.gaia.4658617199111762560.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4658617199111762560'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 83.10403669186208
+  dec_deg: -67.69822381888848
+  r_pc: 49590.0
+  mag_abs: -8.76982654145555
+  teff: 4377.617088390928
+  identifiers:
+    gaia_source_id: '4658617199111762560'
+    simbad_main_id: HD 269723
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4658617199111762560
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 9.707144
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4658617199111762560
+      photometry_donor: gaia:4658617199111762560
+      temperature_donor: gaia:4658617199111762560
+- override_id: distance.hip.26311.replace.v1
+  action: replace
+  source: hip
+  source_id: '26311'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 84.05339534217866
+  dec_deg: -1.2019226024999823
+  r_pc: 384.0
+  mag_abs: -6.298156132328032
+  teff: 13211.014574608804
+  identifiers:
+    hip_id: '26311'
+    proper_name: Alnilam
+    simbad_main_id: '* eps Ori'
+  provenance:
+    schema_version: 1
+    tracker_key: hip:26311
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 384.0
+      symmetric_error_pc: 8.0
+      reference: Oplistilova et al. 2025, arXiv:2507.02276, VLTI observations of the Orion Belt stars
+        I
+      notes: Preferred ε Ori/Alnilam distance from Orion OB1b members, supported by diffuse interstellar
+        bands and reddening; the paper explicitly rejects the older ~600 pc Hipparcos result.
+    preserved_payload:
+      apparent_magnitude: 1.6234999895096234
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:26311
+      photometry_donor: hip:26311
+      temperature_donor: hip:26311
+- override_id: distance.gaia.4658193814095915776.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4658193814095915776'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 79.5598437037474
+  dec_deg: -69.25031764884463
+  r_pc: 49590.0
+  mag_abs: -9.076038541455551
+  teff: 6420.00445214755
+  identifiers:
+    gaia_source_id: '4658193814095915776'
+    simbad_main_id: V* S Dor
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4658193814095915776
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 9.400932
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4658193814095915776
+      photometry_donor: gaia:4658193814095915776
+      temperature_donor: gaia:4658193814095915776
+- override_id: distance.gaia.459101393719884800.replace.v1
+  action: replace
+  source: gaia
+  source_id: '459101393719884800'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 35.71545970892247
+  dec_deg: 58.58650423544023
+  r_pc: 2420.0
+  mag_abs: -4.1739572299021575
+  teff: 3510.0
+  identifiers:
+    gaia_source_id: '459101393719884800'
+    simbad_main_id: V* S Per
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:459101393719884800
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 2420.0
+      symmetric_error_pc: 110.0
+      reference: Asaki et al. 2010, ApJ 721 267 (doi:10.1088/0004-637X/721/1/267)
+      notes: Six-year VLBI H2O-maser parallax 0.413±0.017 mas gives 2.42 +0.11/-0.09 kpc. This direct
+        maser distance supersedes Gaia photocenter astrometry for the red supergiant.
+    preserved_payload:
+      apparent_magnitude: 7.7451196
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:459101393719884800
+      photometry_donor: gaia:459101393719884800
+      temperature_donor: gaia:459101393719884800
+- override_id: distance.gaia.4657630731032546176.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4657630731032546176'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 85.85496401949874
+  dec_deg: -69.24850462919655
+  r_pc: 49590.0
+  mag_abs: -8.40693754145555
+  teff: 6200.0
+  identifiers:
+    gaia_source_id: '4657630731032546176'
+    simbad_main_id: HD 270046
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4657630731032546176
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 10.070033
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4657630731032546176
+      photometry_donor: gaia:4657630731032546176
+      temperature_donor: gaia:4657630731032546176
+- override_id: distance.hip.23177.replace.v1
+  action: replace
+  source: hip
+  source_id: '23177'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 74.78777004144848
+  dec_deg: -65.66770108189358
+  r_pc: 49590.0
+  mag_abs: -8.70734354145555
+  teff: 4758.83352452025
+  identifiers:
+    gaia_source_id: '4662293897281149824'
+    hip_id: '23177'
+    simbad_main_id: HD 270920
+  provenance:
+    schema_version: 1
+    tracker_key: hip:23177
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 9.769627
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4662293897281149824
+      photometry_donor: gaia:4662293897281149824
+      temperature_donor: gaia:4662293897281149824
+- override_id: distance.gaia.4657680513972093952.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4657680513972093952'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 84.53995039064851
+  dec_deg: -69.10591865154424
+  r_pc: 49590.0
+  mag_abs: -8.37251554145555
+  teff: 5763.338809316796
+  identifiers:
+    gaia_source_id: '4657680513972093952'
+    simbad_main_id: HD 269902
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4657680513972093952
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 10.104455
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4657680513972093952
+      photometry_donor: gaia:4657680513972093952
+      temperature_donor: gaia:4657680513972093952
+- override_id: distance.hip.22794.replace.v1
+  action: replace
+  source: hip
+  source_id: '22794'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 73.55942399621492
+  dec_deg: -69.2101231622422
+  r_pc: 49590.0
+  mag_abs: -8.676085541455551
+  teff: 3994.310933082291
+  identifiers:
+    gaia_source_id: '4655460776104657408'
+    hip_id: '22794'
+    simbad_main_id: HD 268757
+  provenance:
+    schema_version: 1
+    tracker_key: hip:22794
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 9.800885
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4655460776104657408
+      photometry_donor: gaia:4655460776104657408
+      temperature_donor: gaia:4655460776104657408
+- override_id: distance.gaia.4661772144657955456.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4661772144657955456'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 73.22349444345846
+  dec_deg: -66.93115033349831
+  r_pc: 49590.0
+  mag_abs: -7.851542541455551
+  teff: 3341.4374721934505
+  identifiers:
+    gaia_source_id: '4661772144657955456'
+    simbad_main_id: SP77  21-12
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4661772144657955456
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 10.625428
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4661772144657955456
+      photometry_donor: gaia:4661772144657955456
+      temperature_donor: gaia:4661772144657955456
+- override_id: distance.gaia.4659451968980169984.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4659451968980169984'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 86.25261004924936
+  dec_deg: -67.17618800523304
+  r_pc: 49590.0
+  mag_abs: -8.389817541455553
+  teff: 5182.816793463084
+  identifiers:
+    gaia_source_id: '4659451968980169984'
+    simbad_main_id: HD 270111
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4659451968980169984
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 10.087152999999997
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4659451968980169984
+      photometry_donor: gaia:4659451968980169984
+      temperature_donor: gaia:4659451968980169984
+- override_id: distance.gaia.4661827841784748032.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4661827841784748032'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 78.07117404212107
+  dec_deg: -67.32396300044519
+  r_pc: 49590.0
+  mag_abs: -7.223680541455554
+  teff: 20000.549
+  identifiers:
+    gaia_source_id: '4661827841784748032'
+    simbad_main_id: HD 269145
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4661827841784748032
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 11.253289999999996
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4661827841784748032
+      photometry_donor: gaia:4661827841784748032
+      temperature_donor: gaia:4661827841784748032
+- override_id: distance.gaia.4069737050648231424.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4069737050648231424'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 272.0168578777035
+  dec_deg: -22.22406054432292
+  r_pc: 1560.0
+  mag_abs: -4.835264991772309
+  teff: 5800.0
+  identifiers:
+    gaia_source_id: '4069737050648231424'
+    simbad_main_id: V* VX Sgr
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4069737050648231424
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 1560.0
+      symmetric_error_pc: 110.0
+      reference: Xu et al. 2018, ApJ 859 14 (2018ApJ...859...14X; doi:10.3847/1538-4357/aabba6)
+      notes: VLBI H2O-maser parallax 0.64±0.04 mas gives 1.56 +0.11/-0.10 kpc. Direct maser astrometry
+        supersedes Gaia for the red hypergiant.
+    preserved_payload:
+      apparent_magnitude: 6.130358
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4069737050648231424
+      photometry_donor: gaia:4069737050648231424
+      temperature_donor: gaia:4069737050648231424
+- override_id: distance.gaia.4658106269873047296.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4658106269873047296'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 81.96337133881828
+  dec_deg: -69.01537656294357
+  r_pc: 49590.0
+  mag_abs: -7.80782254145555
+  teff: 6975.0
+  identifiers:
+    gaia_source_id: '4658106269873047296'
+    simbad_main_id: CD-69   310
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4658106269873047296
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 10.669148
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4658106269873047296
+      photometry_donor: gaia:4658106269873047296
+      temperature_donor: gaia:4658106269873047296
+- override_id: distance.gaia.4658445056805046144.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4658445056805046144'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 82.3375097404579
+  dec_deg: -68.79204624288101
+  r_pc: 49590.0
+  mag_abs: -7.172407314841745
+  teff: 4446.037
+  identifiers:
+    gaia_source_id: '4658445056805046144'
+    simbad_main_id: '[W60] A23'
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4658445056805046144
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 11.304563226613805
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4658445056805046144
+      photometry_donor: gaia:4658445056805046144
+      temperature_donor: gaia:4658445056805046144
+- override_id: distance.gaia.4652214880388720000.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4652214880388720000'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 77.29422881554052
+  dec_deg: -69.60338900112812
+  r_pc: 49590.0
+  mag_abs: -7.896918541455554
+  teff: 4763.167788686342
+  identifiers:
+    gaia_source_id: '4652214880388720000'
+    simbad_main_id: HD 269110
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4652214880388720000
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 10.580051999999997
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4652214880388720000
+      photometry_donor: gaia:4652214880388720000
+      temperature_donor: gaia:4652214880388720000
+- override_id: distance.gaia.4661730912968569984.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4661730912968569984'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 73.79620702879072
+  dec_deg: -67.16955884138889
+  r_pc: 49590.0
+  mag_abs: -8.485773913729245
+  teff: 18515.021
+  identifiers:
+    gaia_source_id: '4661730912968569984'
+    simbad_main_id: HD  32034
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4661730912968569984
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 9.991196627726305
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4661730912968569984
+      photometry_donor: gaia:4661730912968569984
+      temperature_donor: gaia:4661730912968569984
+- override_id: distance.gaia.4657702886498144256.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4657702886498144256'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 84.04202515081052
+  dec_deg: -68.92812594947797
+  r_pc: 49590.0
+  mag_abs: -6.427498429794635
+  teff: 6898.572
+  identifiers:
+    gaia_source_id: '4657702886498144256'
+    simbad_main_id: HD 269840
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4657702886498144256
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 12.049472111660915
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4657702886498144256
+      photometry_donor: gaia:4657702886498144256
+      temperature_donor: gaia:4657702886498144256
+- override_id: distance.hip.75629.replace.v1
+  action: replace
+  source: hip
+  source_id: '75629'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 231.7851794919988
+  dec_deg: -5.817705617499063
+  r_pc: 737.986
+  mag_abs: -1.4380403934632433
+  teff: 3567.7091664392224
+  identifiers:
+    gaia_source_id: '6322696368047406976'
+    hip_id: '75629'
+    simbad_main_id: HD 137610
+  provenance:
+    schema_version: 1
+    tracker_key: hip:75629
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 737.986
+      symmetric_error_pc: 62.0661
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 675.92–762.26 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=2.20. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 7.9022002220176955
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:75629
+      photometry_donor: hip:75629
+      temperature_donor: hip:75629
+- override_id: distance.gaia.5971289565647972608.replace.v1
+  action: replace
+  source: gaia
+  source_id: '5971289565647972608'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 252.96755916146594
+  dec_deg: -38.04748086342616
+  r_pc: 153.6
+  mag_abs: 0.14444100539145843
+  teff: 35823.555
+  identifiers:
+    gaia_source_id: '5971289565647972608'
+    simbad_main_id: '* mu.01 Sco'
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:5971289565647972608
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 153.6
+      symmetric_error_pc: 21.5
+      reference: van Antwerpen & Moon 2010, MNRAS 401 2059 (doi:10.1111/j.1365-2966.2009.15796.x)
+      notes: Binary analysis uses the revised Hipparcos parallax 6.51±0.91 mas and finds a distance of
+        about 150 pc; a later binary solution gives a compatible ~135 pc photometric distance.
+    preserved_payload:
+      apparent_magnitude: 6.076397083868924
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:5971289565647972608
+      photometry_donor: gaia:5971289565647972608
+      temperature_donor: gaia:5971289565647972608
+- override_id: distance.gaia.4657274283151403520.replace.v1
+  action: replace
+  source: gaia
+  source_id: '4657274283151403520'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 83.76503433620096
+  dec_deg: -69.75056206186171
+  r_pc: 49590.0
+  mag_abs: -4.397921111703955
+  teff: 22687.459
+  identifiers:
+    gaia_source_id: '4657274283151403520'
+    simbad_main_id: HD 269786
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:4657274283151403520
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 14.079049429751596
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4657274283151403520
+      photometry_donor: gaia:4657274283151403520
+      temperature_donor: gaia:4657274283151403520
+- override_id: distance.hip.22392.replace.v1
+  action: replace
+  source: hip
+  source_id: '22392'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 72.30168501533682
+  dec_deg: -69.45653214375068
+  r_pc: 49590.0
+  mag_abs: -5.313447326275629
+  teff: 7081.7495
+  identifiers:
+    gaia_source_id: '4655349652394811136'
+    hip_id: '22392'
+    simbad_main_id: HD 268654
+  provenance:
+    schema_version: 1
+    tracker_key: hip:22392
+    review_status: resolved
+    prior_distance_source: GEO_WEAK
+    reason_for_external_search: prior_authority_review_unresolved
+    selected_distance:
+      value_pc: 49590.0
+      symmetric_error_pc: 2500.0
+      reference: Pietrzynski et al. 2019, Nature 567 200 (doi:10.1038/s41586-019-0999-4)
+      notes: Confirmed LMC massive-star identity. Adopt the 49.59 kpc eclipsing-binary geometric center
+        distance; the 2.5 kpc uncertainty deliberately represents LMC line-of-sight depth and dominates
+        the 0.55 kpc center error. Gaia/StarHorse foreground priors are not applicable.
+    preserved_payload:
+      apparent_magnitude: 13.163523215179922
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4655349652394811136
+      photometry_donor: gaia:4655349652394811136
+      temperature_donor: gaia:4655349652394811136
+- override_id: distance.hip.52474.replace.v1
+  action: replace
+  source: hip
+  source_id: '52474'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 160.91376011856266
+  dec_deg: -65.4793445385783
+  r_pc: 527.905
+  mag_abs: -0.1581785428178577
+  teff: 4356.363996870601
+  identifiers:
+    gaia_source_id: '5239659925608199552'
+    hip_id: '52474'
+    simbad_main_id: HD  93147
+  provenance:
+    schema_version: 1
+    tracker_key: hip:52474
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 527.905
+      symmetric_error_pc: 25.0483
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 510.86–552.95 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=3.01. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 8.454600334170511
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:52474
+      photometry_donor: hip:52474
+      temperature_donor: hip:52474
+- override_id: distance.hip.2656.replace.v1
+  action: replace
+  source: hip
+  source_id: '2656'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 8.414274333482602
+  dec_deg: 62.788807079999984
+  r_pc: 1273.78
+  mag_abs: -2.096472227261435
+  teff: 4576.26175764327
+  identifiers:
+    gaia_source_id: '430763165145655296'
+    hip_id: '2656'
+    simbad_main_id: HD   2973
+  provenance:
+    schema_version: 1
+    tracker_key: hip:2656
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 1273.78
+      symmetric_error_pc: 295.98
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 977.80–1397.89 pc; fidelity=0.946; SH_OUTFLAG=0000;
+        Gaia RUWE=3.41. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 8.428999900817962
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:2656
+      photometry_donor: hip:2656
+      temperature_donor: hip:2656
+- override_id: distance.hip.33230.replace.v1
+  action: replace
+  source: hip
+  source_id: '33230'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 103.71835966319568
+  dec_deg: 16.975712259999025
+  r_pc: 722.873
+  mag_abs: -0.5172100049382884
+  teff: 4828.374241602512
+  identifiers:
+    gaia_source_id: '3358198820956034432'
+    hip_id: '33230'
+    simbad_main_id: HD  50664
+  provenance:
+    schema_version: 1
+    tracker_key: hip:33230
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 722.873
+      symmetric_error_pc: 49.0254
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 687.32–771.90 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=1.83. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 8.778100013733642
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:33230
+      photometry_donor: hip:33230
+      temperature_donor: hip:33230
+- override_id: distance.hip.13423.replace.v1
+  action: replace
+  source: hip
+  source_id: '13423'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 43.21572093336644
+  dec_deg: 28.076634313748443
+  r_pc: 547.304
+  mag_abs: 0.18205730547455978
+  teff: 4607.662132588805
+  identifiers:
+    gaia_source_id: '116488657053906816'
+    hip_id: '13423'
+    simbad_main_id: HD  17851
+  provenance:
+    schema_version: 1
+    tracker_key: hip:13423
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 547.304
+      symmetric_error_pc: 24.7164
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 531.10–572.02 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=1.42. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 8.873200416565117
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:13423
+      photometry_donor: hip:13423
+      temperature_donor: hip:13423
+- override_id: distance.hip.33183.replace.v1
+  action: replace
+  source: hip
+  source_id: '33183'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 103.5958581380436
+  dec_deg: -19.46521429374585
+  r_pc: 475.936
+  mag_abs: 1.1394569638831982
+  teff: 4448.730037388486
+  identifiers:
+    gaia_source_id: '2933166314729314176'
+    hip_id: '33183'
+    simbad_main_id: HD  50913
+  provenance:
+    schema_version: 1
+    tracker_key: hip:33183
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 475.936
+      symmetric_error_pc: 16.8002
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 459.14–485.26 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=2.39. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 9.527199745179251
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:33183
+      photometry_donor: hip:33183
+      temperature_donor: hip:33183
+- override_id: distance.hip.66985.replace.v1
+  action: replace
+  source: hip
+  source_id: '66985'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 205.9198461160889
+  dec_deg: 13.554624271244933
+  r_pc: 499.709
+  mag_abs: 1.0561139264973445
+  teff: 4558.520080988148
+  identifiers:
+    gaia_source_id: '3740506847951026944'
+    hip_id: '66985'
+    simbad_main_id: BD+14  2655
+  provenance:
+    schema_version: 1
+    tracker_key: hip:66985
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 499.709
+      symmetric_error_pc: 28.0867
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 471.62–512.38 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=3.74. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 9.549699783327435
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:66985
+      photometry_donor: hip:66985
+      temperature_donor: hip:66985
+- override_id: distance.hip.111848.replace.v1
+  action: replace
+  source: hip
+  source_id: '111848'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 339.84395275163683
+  dec_deg: 59.00713979374994
+  r_pc: 2142.75
+  mag_abs: -1.8407572533690502
+  teff: 6255.885012069947
+  identifiers:
+    gaia_source_id: '2008383302396655488'
+    hip_id: '111848'
+    simbad_main_id: HD 240016
+  provenance:
+    schema_version: 1
+    tracker_key: hip:111848
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 2142.75
+      symmetric_error_pc: 53.8182
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 2088.93–2172.57 pc; fidelity=0.997; SH_OUTFLAG=0000;
+        Gaia RUWE=3.04. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 9.814100265503166
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:111848
+      photometry_donor: hip:111848
+      temperature_donor: hip:111848
+- override_id: distance.hip.90733.replace.v1
+  action: replace
+  source: hip
+  source_id: '90733'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 277.6832311976015
+  dec_deg: 61.16816462624579
+  r_pc: 614.945
+  mag_abs: 0.9922190400402755
+  teff: 4440.35353746771
+  identifiers:
+    gaia_source_id: '2159560035181684352'
+    hip_id: '90733'
+    simbad_main_id: BD+61  1752
+  provenance:
+    schema_version: 1
+    tracker_key: hip:90733
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 614.945
+      symmetric_error_pc: 50.9143
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 588.97–665.86 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=4.80. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 9.936400413513699
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:90733
+      photometry_donor: hip:90733
+      temperature_donor: hip:90733
+- override_id: distance.gaia.5969673420936964864.replace.v1
+  action: replace
+  source: gaia
+  source_id: '5969673420936964864'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 254.06262608256932
+  dec_deg: -40.659949618832975
+  r_pc: 1630.0
+  mag_abs: 0.14544487145399998
+  teff: 19503.71
+  identifiers:
+    gaia_source_id: '5969673420936964864'
+    simbad_main_id: HD 152623
+  provenance:
+    schema_version: 1
+    tracker_key: gaia:5969673420936964864
+    review_status: resolved
+    prior_distance_source: PHOTOGEO_WEAK
+    reason_for_external_search: prior_authority_review_likely_bad
+    selected_distance:
+      value_pc: 1630.0
+      symmetric_error_pc: 150.0
+      reference: van der Meij et al. 2021, A&A 655 A31 (2021A&A...655A..31V)
+      notes: HD 152623 is NGC 6231 member 334. Modern Gaia work gives 1.63±0.15 kpc for NGC 6231, agreeing
+        with the long-standing 1.59–1.64 kpc cluster distance; the star’s own RUWE=17.95 is unusable.
+    preserved_payload:
+      apparent_magnitude: 11.206382893473787
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:5969673420936964864
+      photometry_donor: gaia:5969673420936964864
+      temperature_donor: gaia:5969673420936964864
+- override_id: distance.hip.100957.replace.v1
+  action: replace
+  source: hip
+  source_id: '100957'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 307.0367197013219
+  dec_deg: 3.018384292499852
+  r_pc: 769.802
+  mag_abs: 0.49200447513536893
+  teff: 3254.6148776112327
+  identifiers:
+    gaia_source_id: '4244692852673296384'
+    hip_id: '100957'
+    simbad_main_id: HIP 100957
+  provenance:
+    schema_version: 1
+    tracker_key: hip:100957
+    review_status: resolved
+    prior_distance_source: HIP_EDSD
+    reason_for_external_search: hipparcos_distance_is_generic_edsd_fallback
+    selected_distance:
+      value_pc: 769.802
+      symmetric_error_pc: 44.9526
+      reference: Anders et al. 2022, A&A 658 A91 (2022A&A...658A..91A; VizieR I/354)
+      notes: 'StarHorse EDR3 posterior: 16th–84th percentile 732.75–814.75 pc; fidelity=1.000; SH_OUTFLAG=0000;
+        Gaia RUWE=1.87. Clean StarHorse result; supersedes the generic HIP_EDSD fallback.'
+    preserved_payload:
+      apparent_magnitude: 9.923899650574343
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: hip:100957
+      photometry_donor: hip:100957
+      temperature_donor: hip:100957
+- override_id: distance.hip.5165.replace.v1
+  action: replace
+  source: hip
+  source_id: '5165'
+  override_reason: reviewed_poor_distance_replacement
+  override_policy_version: distance_resolution_v1
+  ra_deg: 16.520955996941634
+  dec_deg: -46.7183906492276
+  r_pc: 55.77
+  mag_abs: 0.012228977542194208
+  teff: 4695.082332398962
+  identifiers:
+    gaia_source_id: '4933453324590295040'
+    hip_id: '5165'
+    simbad_main_id: '* bet Phe'
+  provenance:
+    schema_version: 1
+    tracker_key: hip:5165
+    review_status: resolved
+    prior_distance_source: PRIOR
+    reason_for_external_search: prior_authority_review_likely_bad;gaia_distance_is_fixed_magnitude_prior
+    selected_distance:
+      value_pc: 55.77
+      symmetric_error_pc: 1.65
+      reference: Argyle et al. 2015, Astron. Nachr. 336 378 (doi:10.1002/asna.201412166)
+      notes: Visual-orbit reanalysis that accounts for the nearly equal G8 III components gives parallax
+        17.93±0.53 mas. This replaces the catastrophically bad single-source Hipparcos solution.
+    preserved_payload:
+      apparent_magnitude: 3.7442322
+      magnitude_rebase_formula: mag_abs = apparent_mag - 5*log10(r_pc) + 5
+      astrometry_donor: gaia:4933453324590295040
+      photometry_donor: gaia:4933453324590295040
+      temperature_donor: gaia:4933453324590295040

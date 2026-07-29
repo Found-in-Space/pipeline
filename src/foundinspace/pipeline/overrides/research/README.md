@@ -48,3 +48,23 @@ By default it queries SIMBAD, Gaia DR3 plus the Bailer-Jones EDR3 distance
 table, and the StarHorse 2021 VizieR catalog. Results go to
 `downloads/distance-resolution-v1/`; they are evidence for review and do not
 modify this tracker or the executable overrides.
+
+`distance-resolution-v1-resolved.yaml` is the explicit custom override release
+candidate for the 48 `resolved` rows. It is deliberately kept outside
+`overrides/data`, so the packaged default remains empty. The YAML
+preserves the staged astrometry and temperature donors, rebases absolute
+magnitude to keep the current apparent brightness at the reviewed distance, and
+embeds the selected uncertainty, reference, notes, donor identities, and input
+hashes.
+
+Generate or cross-check it with:
+
+```bash
+uv run python scripts/build_distance_override_yaml.py --force
+uv run python scripts/build_distance_override_yaml.py --check
+```
+
+The build requires the matching `official-upper-level-preflight` artifacts in
+`downloads/`. A catalog publication should consume this YAML through an
+explicit pinned source path and include the YAML, tracker, build report, and
+input provenance in the publication directory.
