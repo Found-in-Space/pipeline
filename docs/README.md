@@ -12,6 +12,9 @@ The documentation is intentionally small:
 - [Download packages](download-packages.md) defines the local evidence bundle
   layout for completed source downloads, including hardlinked payloads,
   manifests, checksums, and observed Gaia byte-per-row sizing.
+- [Controlled data storage](storage-layout.md) defines the durable raw,
+  package, derived, run, release, scratch, and legacy namespaces plus hardlink
+  and retention rules.
 - [Scientific provenance](scientific-provenance.md) describes the source
   catalogs, calculation engines, field requirements, formulas, and quality
   provenance encoded by the staged catalog pipelines.
