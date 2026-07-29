@@ -55,6 +55,10 @@ class MergeReport:
     matched_pairs_scored: int
     matched_winner_gaia: int
     matched_winner_hip: int
+    matched_photometry_gaia: int
+    matched_photometry_hip: int
+    matched_teff_gaia: int
+    matched_teff_hip: int
     override_add_applied: int
     override_replace_applied: int
     override_drop_applied: int
@@ -248,6 +252,10 @@ def run_merge(
         matched_pairs_scored=0,
         matched_winner_gaia=0,
         matched_winner_hip=0,
+        matched_photometry_gaia=0,
+        matched_photometry_hip=0,
+        matched_teff_gaia=0,
+        matched_teff_hip=0,
         override_add_applied=0,
         override_replace_applied=0,
         override_drop_applied=0,
@@ -416,16 +424,34 @@ def run_merge(
                     hip_rec,
                     number_of_neighbours=n_neighbours,
                 )
+                (
+                    winner_payload,
+                    photometry_donor,
+                    teff_donor,
+                    photometry_rebased,
+                ) = policy.fuse_matched_payload(
+                    gaia_rec,
+                    hip_rec,
+                    astrometry_donor=winner_catalog,
+                )
                 if winner_catalog == "gaia":
                     winner_row = _output_row(
-                        gaia_rec,
+                        winner_payload,
                         canonical_source="hip",
                         canonical_source_id=str(hip_id),
                     )
                     report.matched_winner_gaia += 1
                 else:
-                    winner_row = _output_row(hip_rec)
+                    winner_row = _output_row(winner_payload)
                     report.matched_winner_hip += 1
+                if photometry_donor == "gaia":
+                    report.matched_photometry_gaia += 1
+                else:
+                    report.matched_photometry_hip += 1
+                if teff_donor == "gaia":
+                    report.matched_teff_gaia += 1
+                else:
+                    report.matched_teff_hip += 1
                 special_out_rows.append(winner_row)
                 special_sidecar_gaia_rows.append(gaia_rec)
                 special_sidecar_dense_rows.append(winner_row)
@@ -445,6 +471,10 @@ def run_merge(
                         winner_source_id=str(
                             gaia_id if winner_catalog == "gaia" else int(hip_id)
                         ),
+                        astrometry_donor=winner_catalog,
+                        photometry_donor=photometry_donor,
+                        teff_donor=teff_donor,
+                        photometry_rebased=photometry_rebased,
                         mapping_source=cross_aux.get("mapping_source", pd.NA),
                         gaia_score=policy._safe_score(
                             gaia_rec.get("astrometry_quality")
@@ -507,7 +537,9 @@ def run_merge(
             hip_id=hip_id,
         )
         if override is not None:
-            cross_aux = cross_aux_by_gaia.get(gaia_id, {}) if gaia_id is not None else {}
+            cross_aux = (
+                cross_aux_by_gaia.get(gaia_id, {}) if gaia_id is not None else {}
+            )
             override_id = str(override["override_id"])
             if override_id in processed_override_ids:
                 resolved_hip_ids.add(hip_id)

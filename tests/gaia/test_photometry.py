@@ -2,9 +2,11 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from foundinspace.pipeline.constants import (
     PHOT_SRC_GAIA_G,
+    PHOT_SRC_GAIA_GSPPHOT,
     PHOT_SRC_MASK,
     PHOT_SRC_SHIFT,
     TEFF_DEFAULT_K,
@@ -90,6 +92,7 @@ def test_compute_mag_abs_gaia_uses_quality_flags():
     assert np.isfinite(out["mag_abs"].iloc[0])
     # With distance 1000 pc, dm = 5*log10(100) = 10; mag_abs from GSP-Phot = 5, or dm path
     assert out["mag_abs"].iloc[0] == 5.0  # mg_gspphot used first
+    assert qf_phot_src(out["quality_flags"].iloc[0]) == PHOT_SRC_GAIA_GSPPHOT
 
 
 def test_compute_mag_abs_gaia_photometry_quality_finite():
@@ -111,8 +114,8 @@ def test_compute_mag_abs_gaia_photometry_quality_finite():
     assert not np.isinf(out["photometry_quality"].iloc[0])
 
 
-def test_compute_mag_abs_gaia_photometry_quality_reversed_bounds_non_negative():
-    """When GSP-Phot bounds are reversed (upper < lower), photometry_quality is still non-negative."""
+def test_compute_mag_abs_gaia_rejects_reversed_gspphot_bounds():
+    """Malformed GSP-Phot quantiles do not become a plausible uncertainty."""
     df = _gaia_after_astrometry(
         phot_g_mean_mag=14.0,
         bp_rp=0.5,
@@ -123,9 +126,10 @@ def test_compute_mag_abs_gaia_photometry_quality_reversed_bounds_non_negative():
     )
     df = assign_photometry_gaia(df)
     out = compute_mag_abs_gaia(df)
-    # quality_gspphot = abs(upper - lower) / 2 = abs(4.8 - 5.2) / 2 = 0.2
-    assert out["photometry_quality"].iloc[0] >= 0.0
-    assert np.isclose(out["photometry_quality"].iloc[0], 0.2)
+    expected = 14.0 - 5.0 * np.log10(1000.0 / 10.0) - 0.3
+    assert out["mag_abs"].iloc[0] == expected
+    assert out["photometry_quality"].iloc[0] == pytest.approx(2.17 * 0.01)
+    assert qf_phot_src(out["quality_flags"].iloc[0]) == PHOT_SRC_GAIA_G
 
 
 def test_compute_teff_gaia_adds_teff_src_to_quality_flags():
@@ -172,6 +176,15 @@ def test_compute_teff_gaia_default_fallback():
     assert qf_teff_src(out["quality_flags"].iloc[0]) == TEFF_SRC_DEFAULT
 
 
+def test_compute_teff_gaia_rejects_out_of_range_bp_rp():
+    df = _gaia_after_astrometry(bp_rp=99.0)
+    df = assign_photometry_gaia(df)
+    out = compute_teff_gaia(df)
+
+    assert out["teff"].iloc[0] == TEFF_DEFAULT_K
+    assert qf_teff_src(out["quality_flags"].iloc[0]) == TEFF_SRC_DEFAULT
+
+
 def test_compute_teff_gaia_ignores_bv_without_bp_rp():
     """Gaia temperature fallback does not use B-V in the strict Gaia engine."""
     df = _gaia_after_astrometry()
@@ -195,7 +208,7 @@ def test_full_gaia_photometry_chain_quality_flags():
     df = compute_mag_abs_gaia(df)
     df = compute_teff_gaia(df)
     flags = df["quality_flags"].iloc[0]
-    assert qf_phot_src(flags) == PHOT_SRC_GAIA_G
+    assert qf_phot_src(flags) == PHOT_SRC_GAIA_GSPPHOT
     assert qf_teff_src(flags) in (
         TEFF_SRC_DEFAULT,
         TEFF_SRC_BPRP,

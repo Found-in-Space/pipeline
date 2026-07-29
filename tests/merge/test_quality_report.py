@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from foundinspace.pipeline.constants import OUTPUT_COLS
 from foundinspace.pipeline.merge.quality_report import run_quality_report
@@ -247,6 +249,15 @@ def test_quality_report_flags_suspicious_non_overridden_rows(tmp_path: Path):
     extreme = issues.loc[issues["issue_type"] == "merged_row_extreme"].iloc[0]
     assert extreme["merged_ra_deg"] == 0.0
     assert extreme["merged_dec_deg"] == 0.0
+    matched = issues.loc[issues["issue_type"] == "matched_pair_conflict"].iloc[0]
+    assert matched["spatial_separation_pc"] == 200.0
+    assert matched["gaia_apparent_mag"] == pytest.approx(
+        -1.0 + 5.0 * math.log10(300.0 / 10.0)
+    )
+    assert matched["hip_apparent_mag"] == pytest.approx(6.0)
+    assert matched["apparent_mag_delta"] == pytest.approx(
+        matched["gaia_apparent_mag"] - matched["hip_apparent_mag"]
+    )
 
     report_json = json.loads(
         (merge_dir / "merge_quality_report.json").read_text(encoding="utf-8")

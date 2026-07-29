@@ -109,3 +109,19 @@ def test_output_columns_present():
     for col in COORD_OUTPUT_COLS:
         assert col in out1, f"calculate_coordinates missing {col}"
         assert col in out2, f"calculate_coordinates_fast missing {col}"
+
+
+def test_missing_proper_motion_preserves_position_at_canonical_epoch():
+    df = _make_coords_df(n=2, seed=5)
+    df["epoch_yr"] = CANONICAL_EPOCH_JYEAR
+    df["pmra_use_masyr"] = np.nan
+    df["pmdec_use_masyr"] = np.nan
+
+    out_astropy = calculate_coordinates(df.copy())
+    out_fast = calculate_coordinates_fast(df.copy())
+
+    for out in (out_astropy, out_fast):
+        np.testing.assert_allclose(out["ra_deg"], df["ra_use_deg"])
+        np.testing.assert_allclose(out["dec_deg"], df["dec_use_deg"])
+        np.testing.assert_allclose(out["r_pc"], df["distance_use_pc"])
+        assert np.isfinite(out[COORD_OUTPUT_COLS].to_numpy(dtype=float)).all()

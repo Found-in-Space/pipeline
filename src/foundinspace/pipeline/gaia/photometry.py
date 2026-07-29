@@ -12,6 +12,8 @@ from foundinspace.pipeline.common.quality_flags import (
 )
 from foundinspace.pipeline.constants import (
     PHOT_SRC_GAIA_G,
+    PHOT_SRC_GAIA_GSPPHOT,
+    PHOT_SRC_UNKNOWN,
     PHOTOMETRY_QUALITY_DM_FACTOR,
     TEFF_DEFAULT_K,
     TEFF_SRC_BPRP,
@@ -30,6 +32,9 @@ _TEFF_VALID_HI = 50000.0
 # Surface gravity bounds for Gaia logg (dex). Covers supergiants to white dwarfs.
 _LOGG_VALID_LO = 0.0
 _LOGG_VALID_HI = 9.0
+
+_BP_RP_VALID_LO = -0.5
+_BP_RP_VALID_HI = 3.5
 
 
 def _require_columns(df: pd.DataFrame, columns: tuple[str, ...], *, label: str) -> None:
@@ -111,7 +116,12 @@ def compute_teff_gaia(work: pd.DataFrame) -> pd.DataFrame:
 
     bp_rp = work["bp_rp"].astype(float)
 
-    has_bp_rp = pd.notnull(bp_rp) & np.isfinite(bp_rp)
+    has_bp_rp = (
+        pd.notnull(bp_rp)
+        & np.isfinite(bp_rp)
+        & (bp_rp >= _BP_RP_VALID_LO)
+        & (bp_rp <= _BP_RP_VALID_HI)
+    )
 
     teff_from_bp_rp = bp_rp_to_teff(bp_rp.to_numpy())
 
@@ -259,15 +269,31 @@ def compute_mag_abs_gaia(df: pd.DataFrame) -> pd.DataFrame:
     qf = df["quality_flags"].astype(np.uint16).to_numpy()
     is_gaia_g = qf_phot_src(qf) == PHOT_SRC_GAIA_G
     ag_ok = pd.notnull(ag) & (ag >= 0) & (ag < 5)
-    mg_ok = pd.notnull(mg) & np.isfinite(mg) & (mg > -10) & (mg < 15)
+    mg_upper = df["mg_gspphot_upper"].astype(float)
+    mg_lower = df["mg_gspphot_lower"].astype(float)
+    bounds_present = (
+        pd.notnull(mg_upper)
+        & pd.notnull(mg_lower)
+        & np.isfinite(mg_upper)
+        & np.isfinite(mg_lower)
+    )
+    has_bounds = bounds_present & (mg_lower <= mg) & (mg <= mg_upper)
+    mg_ok = (
+        pd.notnull(mg)
+        & np.isfinite(mg)
+        & (mg > -10)
+        & (mg < 15)
+        & (~bounds_present | has_bounds)
+    )
 
+    mag_ok = pd.notnull(mag) & np.isfinite(mag)
     mag_abs_gspphot = np.where(mg_ok, mg, np.nan)
     mag_abs_ext = np.where(
-        is_gaia_g & ag_ok,
+        is_gaia_g & mag_ok & ag_ok,
         absolute_magnitude_from_apparent(mag, r_pc, ag),
         np.nan,
     )
-    mag_abs_dm = mag - dm
+    mag_abs_dm = np.where(mag_ok & np.isfinite(dm), mag - dm, np.nan)
 
     df["mag_abs"] = (
         pd.Series(mag_abs_gspphot, index=df.index)
@@ -278,23 +304,25 @@ def compute_mag_abs_gaia(df: pd.DataFrame) -> pd.DataFrame:
     f_dist = df["astrometry_quality"].astype(float)
     quality_dm = PHOTOMETRY_QUALITY_DM_FACTOR * f_dist
 
-    mg_upper = df["mg_gspphot_upper"].astype(float)
-    mg_lower = df["mg_gspphot_lower"].astype(float)
-    has_bounds = (
-        pd.notnull(mg_upper)
-        & pd.notnull(mg_lower)
-        & np.isfinite(mg_upper)
-        & np.isfinite(mg_lower)
-    )
-    quality_gspphot = np.where(has_bounds, np.abs(mg_upper - mg_lower) / 2.0, np.nan)
+    quality_gspphot = np.where(has_bounds, (mg_upper - mg_lower) / 2.0, np.nan)
 
     used_gspphot = pd.notnull(mag_abs_gspphot) & np.isfinite(mag_abs_gspphot)
     used_ext = ~used_gspphot & pd.notnull(mag_abs_ext) & np.isfinite(mag_abs_ext)
+    used_dm = (
+        ~used_gspphot & ~used_ext & pd.notnull(mag_abs_dm) & np.isfinite(mag_abs_dm)
+    )
 
     df["photometry_quality"] = np.where(
         used_gspphot,
         np.where(has_bounds, quality_gspphot, np.nan),
-        np.where(used_ext, quality_dm, quality_dm),
+        np.where(used_ext | used_dm, quality_dm, np.nan),
     )
     df["photometry_quality"] = df["photometry_quality"].astype(float)
+
+    phot_src = np.where(
+        used_gspphot,
+        PHOT_SRC_GAIA_GSPPHOT,
+        np.where(used_ext | used_dm, PHOT_SRC_GAIA_G, PHOT_SRC_UNKNOWN),
+    ).astype(np.uint16)
+    df["quality_flags"] = add_photometry_source(qf, phot_src)
     return df

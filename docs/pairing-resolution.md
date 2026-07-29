@@ -19,18 +19,19 @@ The current implemented path remains:
    `hipparcos2_best_neighbour` (H2BN) map and may combine explicitly supplied,
    already-resolved supplemental maps.
 2. `merge build` validates that the selected map is one-to-one.
-3. The merge chooses one complete staged Gaia or Hipparcos payload for each
-   accepted pair, while retaining Hipparcos canonical identity.
+3. The merge chooses an astrometry donor for each accepted pair, independently
+   selects the best valid staged render photometry and temperature, and retains
+   Hipparcos canonical identity.
 
 There is no `pairings resolve` command yet. Do not pass the policy-neutral
 evidence union to `merge build --crossmatch-path` or configure it as a
 supplemental map: the one-to-one validation will reject it, and dropping
 conflicting rows without a recorded policy would not be reproducible.
 
-The current winner policy also does not implement field-level fusion. Its
-brightness-dependent margin normally uses raw Gaia G, and selecting the
-astrometric winner selects that row's `mag_abs` as well. A better position can
-therefore bring less appropriate render photometry with it.
+The current astrometry-winner policy still normally uses raw Gaia G for its
+brightness-dependent margin. Output construction is field-level: when the
+photometry donor differs, its apparent render magnitude is rebased to the
+selected astrometric distance and both donors are recorded.
 
 ## Intended Resolution Stage
 
@@ -129,7 +130,7 @@ The resolution stage should produce:
   accepted and rejected candidates;
 - a JSON report containing the policy version, thresholds, input hashes,
   reason counts, missing-measurement counts, and accepted-map count;
-- explicit astrometry and photometry donor fields if fused rows are supported.
+- explicit astrometry, photometry, and temperature donor fields.
 
 The accepted map must become a project-level input shared by merge,
 identifiers, and quality reporting. A command-line override used only by
@@ -142,8 +143,7 @@ needs:
 
 - the resolution stage and its tests;
 - a single configured accepted-map path used by every consumer;
-- render-magnitude safeguards and, if adopted, field-level donor selection;
-- quality reporting based on parsec separation and apparent render magnitude;
+- render-magnitude pair-acceptance safeguards;
 - recorded input hashes and complete decision coverage.
 
 Until those exist, H2BN or another independently resolved one-to-one map remains

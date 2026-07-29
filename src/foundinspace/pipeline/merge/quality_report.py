@@ -10,6 +10,7 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -34,6 +35,7 @@ QUALITY_ISSUE_COLS = [
     "tie_break_reason",
     "distance_ratio",
     "distance_frac_diff",
+    "spatial_separation_pc",
     "mag_abs_delta",
     "apparent_mag_delta",
     "gaia_apparent_mag",
@@ -242,6 +244,9 @@ def _matched_pair_issues(
         gaia_ids,
         [
             "source_id",
+            "x_icrs_pc",
+            "y_icrs_pc",
+            "z_icrs_pc",
             "r_pc",
             "mag_abs",
             "astrometry_quality",
@@ -252,6 +257,9 @@ def _matched_pair_issues(
     ).rename(
         columns={
             "source_id": "gaia_source_id_num",
+            "x_icrs_pc": "gaia_x_icrs_pc",
+            "y_icrs_pc": "gaia_y_icrs_pc",
+            "z_icrs_pc": "gaia_z_icrs_pc",
             "r_pc": "gaia_r_pc",
             "mag_abs": "gaia_mag_abs",
             "astrometry_quality": "gaia_astrometry_quality",
@@ -266,6 +274,9 @@ def _matched_pair_issues(
         hip_ids,
         [
             "source_id",
+            "x_icrs_pc",
+            "y_icrs_pc",
+            "z_icrs_pc",
             "r_pc",
             "mag_abs",
             "astrometry_quality",
@@ -276,6 +287,9 @@ def _matched_pair_issues(
     ).rename(
         columns={
             "source_id": "hip_source_id_num",
+            "x_icrs_pc": "hip_x_icrs_pc",
+            "y_icrs_pc": "hip_y_icrs_pc",
+            "z_icrs_pc": "hip_z_icrs_pc",
             "r_pc": "hip_r_pc",
             "mag_abs": "hip_mag_abs",
             "astrometry_quality": "hip_astrometry_quality",
@@ -313,10 +327,28 @@ def _matched_pair_issues(
     farther = pd.concat([gaia_r, hip_r], axis=1).max(axis=1)
     pairs["distance_ratio"] = farther / nearer
     pairs["distance_frac_diff"] = pairs["distance_ratio"] - 1.0
-    pairs["mag_abs_delta"] = (
-        pd.to_numeric(pairs["gaia_mag_abs"], errors="coerce")
-        - pd.to_numeric(pairs["hip_mag_abs"], errors="coerce")
+    dx = pd.to_numeric(pairs["gaia_x_icrs_pc"], errors="coerce") - pd.to_numeric(
+        pairs["hip_x_icrs_pc"], errors="coerce"
     )
+    dy = pd.to_numeric(pairs["gaia_y_icrs_pc"], errors="coerce") - pd.to_numeric(
+        pairs["hip_y_icrs_pc"], errors="coerce"
+    )
+    dz = pd.to_numeric(pairs["gaia_z_icrs_pc"], errors="coerce") - pd.to_numeric(
+        pairs["hip_z_icrs_pc"], errors="coerce"
+    )
+    pairs["spatial_separation_pc"] = np.sqrt(dx * dx + dy * dy + dz * dz)
+    pairs["mag_abs_delta"] = pd.to_numeric(
+        pairs["gaia_mag_abs"], errors="coerce"
+    ) - pd.to_numeric(pairs["hip_mag_abs"], errors="coerce")
+    gaia_apparent = pd.to_numeric(pairs["gaia_mag_abs"], errors="coerce") + (
+        5.0 * np.log10(gaia_r / 10.0)
+    )
+    hip_apparent = pd.to_numeric(pairs["hip_mag_abs"], errors="coerce") + (
+        5.0 * np.log10(hip_r / 10.0)
+    )
+    pairs["gaia_apparent_mag"] = gaia_apparent
+    pairs["hip_apparent_mag"] = hip_apparent
+    pairs["apparent_mag_delta"] = gaia_apparent - hip_apparent
 
     gaia_better = pairs["gaia_score_use"] < pairs["hip_score_use"]
     hip_better = pairs["hip_score_use"] < pairs["gaia_score_use"]
@@ -325,9 +357,8 @@ def _matched_pair_issues(
         hip_better & ~winner.eq("hip")
     )
     pairs["gaia_ruwe_high"] = pairs["gaia_ruwe_use"] > ruwe_threshold
-    pairs["hip_non_standard"] = (
-        pairs["hip_solution_type_use"].notna()
-        & (pairs["hip_solution_type_use"] != HIP_STANDARD_SOLUTION)
+    pairs["hip_non_standard"] = pairs["hip_solution_type_use"].notna() & (
+        pairs["hip_solution_type_use"] != HIP_STANDARD_SOLUTION
     )
     pairs["override_covered"] = [
         ("gaia", str(int(g))) in override_keys or ("hip", str(int(h))) in override_keys
@@ -349,7 +380,11 @@ def _matched_pair_issues(
     mask = (
         distance_disagreement
         & ~pairs["override_covered"]
-        & (pairs["winner_not_lowest_score"] | both_catalogs_suspect | gaia_winner_suspect)
+        & (
+            pairs["winner_not_lowest_score"]
+            | both_catalogs_suspect
+            | gaia_winner_suspect
+        )
     )
 
     issues: list[dict[str, Any]] = []
@@ -386,7 +421,11 @@ def _matched_pair_issues(
                 tie_break_reason=rec.get("tie_break_reason"),
                 distance_ratio=rec.get("distance_ratio"),
                 distance_frac_diff=rec.get("distance_frac_diff"),
+                spatial_separation_pc=rec.get("spatial_separation_pc"),
                 mag_abs_delta=rec.get("mag_abs_delta"),
+                apparent_mag_delta=rec.get("apparent_mag_delta"),
+                gaia_apparent_mag=rec.get("gaia_apparent_mag"),
+                hip_apparent_mag=rec.get("hip_apparent_mag"),
                 gaia_r_pc=rec.get("gaia_r_pc"),
                 hip_r_pc=rec.get("hip_r_pc"),
                 gaia_mag_abs=rec.get("gaia_mag_abs"),
@@ -423,7 +462,9 @@ def _merged_row_issues(
         "astrometry_quality",
         "photometry_quality",
     ]
-    for batch in _iter_parquet_batches(sorted(shards_root.glob("*/*.parquet")), columns):
+    for batch in _iter_parquet_batches(
+        sorted(shards_root.glob("*/*.parquet")), columns
+    ):
         if batch.empty:
             continue
         source = batch["source"].astype(str)
@@ -587,8 +628,8 @@ def _load_labels(path: Path | None) -> pd.DataFrame:
     hd_mask = label.eq("") & df["hd"].notna()
     label.loc[hd_mask] = "HD " + df.loc[hd_mask, "hd"].map(_string_id).astype(str)
     hip_mask = label.eq("") & df["hip_id"].notna()
-    label.loc[hip_mask] = (
-        "HIP " + df.loc[hip_mask, "hip_id"].map(_string_id).astype(str)
+    label.loc[hip_mask] = "HIP " + df.loc[hip_mask, "hip_id"].map(_string_id).astype(
+        str
     )
     out = df[["source", "source_id"]].copy()
     out["label"] = label

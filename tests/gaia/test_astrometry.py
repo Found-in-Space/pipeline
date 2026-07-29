@@ -2,12 +2,13 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from foundinspace.pipeline.constants import (
     DIST_SRC_BJ_GEO,
     DIST_SRC_BJ_PHOTOGEO,
-    DIST_SRC_DR3,
     DIST_SRC_DR3_WEAK,
+    DIST_SRC_GEO_WEAK,
     DIST_SRC_PHOTO_MG_AG,
     DIST_SRC_PHOTOGEO_WEAK,
     DIST_SRC_PRIOR,
@@ -36,6 +37,8 @@ def _base_gaia_df(**overrides):
         "r_hi_photogeo": np.nan,
         "phot_g_mean_mag": 14.0,
         "mg_gspphot": np.nan,
+        "mg_gspphot_lower": np.nan,
+        "mg_gspphot_upper": np.nan,
         "ag_gspphot": np.nan,
     }
     d.update(overrides)
@@ -59,15 +62,15 @@ def test_astrometry_adds_required_columns():
         assert col in out.columns, f"missing {col}"
 
 
-def test_tier_a_dr3_valid_parallax():
-    """Tier A: valid DR3 parallax wins; dist_src=DR3, dist_valid set, distance = 1000/plx."""
+def test_inverse_parallax_is_review_fallback_without_bj_posterior():
+    """Raw inverse parallax is retained only as a review fallback."""
     df = _base_gaia_df(parallax=2.0, parallax_error=0.02)
     out = select_astrometry_gaia(df)
     assert out["distance_use_pc"].iloc[0] == 500.0
     flags = out["quality_flags"].iloc[0]
-    assert qf_dist_src(flags) == DIST_SRC_DR3
+    assert qf_dist_src(flags) == DIST_SRC_DR3_WEAK
     assert qf_dist_valid(flags)
-    assert not qf_needs_review(flags)
+    assert qf_needs_review(flags)
     assert np.isfinite(out["astrometry_quality"].iloc[0])
     assert not np.isinf(out["astrometry_quality"].iloc[0])
 
@@ -102,6 +105,35 @@ def test_tier_a_bj_geo():
     assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_BJ_GEO
     assert out["r_lo_pc"].iloc[0] == 180.0
     assert out["r_hi_pc"].iloc[0] == 220.0
+
+
+def test_tier_a_bj_posterior_outranks_raw_inverse_parallax():
+    df = _base_gaia_df(
+        parallax=2.0,
+        parallax_error=0.01,
+        r_med_geo=510.0,
+        r_lo_geo=500.0,
+        r_hi_geo=520.0,
+    )
+    out = select_astrometry_gaia(df)
+
+    assert out["distance_use_pc"].iloc[0] == 510.0
+    assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_BJ_GEO
+    assert out["astrometry_quality"].iloc[0] == pytest.approx(20.0 / 1020.0)
+
+
+def test_malformed_bj_interval_cannot_win_with_negative_score():
+    df = _base_gaia_df(
+        parallax=2.0,
+        parallax_error=0.02,
+        r_med_geo=500.0,
+        r_lo_geo=550.0,
+        r_hi_geo=450.0,
+    )
+    out = select_astrometry_gaia(df)
+
+    assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_GEO_WEAK
+    assert out["astrometry_quality"].iloc[0] == 10.0
 
 
 def test_tier_b_weak_catalog_when_all_primary_invalid():
@@ -170,6 +202,22 @@ def test_tier_c_photometric_distance():
     assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_PHOTO_MG_AG
     assert qf_dist_valid(out["quality_flags"].iloc[0])  # usable distance
     assert out["astrometry_quality"].iloc[0] == 20.0  # QUALITY_FALLBACK_PHOTOMETRIC
+
+
+def test_tier_c_rejects_gspphot_magnitude_outside_its_quantiles():
+    df = _base_gaia_df(
+        parallax=0.0,
+        r_med_geo=np.nan,
+        r_med_photogeo=np.nan,
+        phot_g_mean_mag=10.0,
+        mg_gspphot=5.0,
+        mg_gspphot_lower=6.0,
+        mg_gspphot_upper=4.0,
+        ag_gspphot=0.5,
+    )
+    out = select_astrometry_gaia(df)
+
+    assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_PRIOR
 
 
 def test_tier_d_synthetic_prior():
@@ -265,6 +313,6 @@ def test_multi_row_mixed_tiers():
     )
     out = select_astrometry_gaia(df)
     assert out["distance_use_pc"].iloc[0] == 1000.0
-    assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_DR3
+    assert qf_dist_src(out["quality_flags"].iloc[0]) == DIST_SRC_DR3_WEAK
     assert out["distance_use_pc"].iloc[1] == 500.0
     assert qf_dist_src(out["quality_flags"].iloc[1]) == DIST_SRC_PHOTOGEO_WEAK

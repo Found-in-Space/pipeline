@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from foundinspace.pipeline.constants import EPS
-
 DISTANCE_PLAUSIBLE_MIN_PC = 0.1
 DISTANCE_PLAUSIBLE_MAX_PC = 200_000.0
 
@@ -51,11 +49,28 @@ def fractional_distance_interval_width(
     lower_pc: object,
     upper_pc: object,
 ) -> np.ndarray:
-    """Return half-width of a distance interval as a fraction of distance."""
-    distance = np.asarray(distance_pc, dtype=float)
-    lower = np.asarray(lower_pc, dtype=float)
-    upper = np.asarray(upper_pc, dtype=float)
-    return (upper - lower) / (2.0 * np.maximum(distance, EPS))
+    """Return the fractional half-width of a valid distance interval.
+
+    The lower/median/upper values are expected to be ordered positive
+    quantiles. Malformed intervals return NaN instead of producing a negative
+    or otherwise artificially favourable quality score.
+    """
+    distance, lower, upper = np.broadcast_arrays(
+        np.asarray(distance_pc, dtype=float),
+        np.asarray(lower_pc, dtype=float),
+        np.asarray(upper_pc, dtype=float),
+    )
+    out = np.full(distance.shape, np.nan, dtype=float)
+    valid = (
+        finite_positive_mask(distance)
+        & finite_positive_mask(lower)
+        & finite_positive_mask(upper)
+        & (lower <= distance)
+        & (distance <= upper)
+        & (lower <= upper)
+    )
+    np.divide(upper - lower, 2.0 * distance, out=out, where=valid)
+    return out
 
 
 def plausible_distance_mask(distance_pc: object) -> np.ndarray:

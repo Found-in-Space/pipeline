@@ -7,7 +7,13 @@ import pandas as pd
 import pytest
 from astropy.table import Table
 
-from foundinspace.pipeline.constants import OUTPUT_COLS
+from foundinspace.pipeline.constants import (
+    OUTPUT_COLS,
+    TEFF_DEFAULT_K,
+    TEFF_SRC_DEFAULT,
+    qf_needs_review,
+    qf_teff_src,
+)
 from foundinspace.pipeline.hipparcos.pipeline import (
     HIP_AUXILIARY_COLS,
     HIP_OUTPUT_COLS,
@@ -109,6 +115,26 @@ def test_run_pipeline_mag_abs_matches_distance_modulus():
     row1 = out.loc[out["source_id"] == 2].iloc[0]
     dm = 5.0 * np.log10(200.0 / 10.0)
     assert row1["mag_abs"] == pytest.approx(9.0 - dm, rel=0, abs=1e-9)
+
+
+def test_low_significance_parallax_is_retained_but_marked_for_review():
+    raw = _sample_hip_df().iloc[[0]].copy()
+    raw["e_Plx"] = 5.0
+
+    row = _run_hipparcos_pipeline(raw).iloc[0]
+
+    assert row["r_pc"] == pytest.approx(100.0)
+    assert qf_needs_review(row["quality_flags"])
+
+
+def test_out_of_range_bv_uses_temperature_default():
+    raw = _sample_hip_df().iloc[[0]].copy()
+    raw["B-V"] = 99.0
+
+    row = _run_hipparcos_pipeline(raw).iloc[0]
+
+    assert row["teff"] == TEFF_DEFAULT_K
+    assert qf_teff_src(row["quality_flags"]) == TEFF_SRC_DEFAULT
 
 
 def test_main_writes_parquet_with_limit(tmp_path: Path):

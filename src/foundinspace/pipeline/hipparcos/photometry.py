@@ -17,6 +17,9 @@ from foundinspace.pipeline.constants import (
     TEFF_SRC_DEFAULT,
 )
 
+_BV_VALID_LO = -0.5
+_BV_VALID_HI = 2.5
+
 
 def assign_photometry_hip(df: pd.DataFrame) -> pd.DataFrame:
     """HIP-only: mag = Hpmag, color = bv; OR phot_src into quality_flags."""
@@ -52,7 +55,9 @@ def compute_mag_abs_hip(df: pd.DataFrame) -> pd.DataFrame:
 def compute_teff_hip(df: pd.DataFrame) -> pd.DataFrame:
     """HIP-only: bv_to_teff and default only. OR teff_src into quality_flags."""
     bv = df.get("bv", pd.Series(np.nan, index=df.index)).astype(float)
-    has_bv = pd.notnull(bv) & np.isfinite(bv)
+    has_bv = (
+        pd.notnull(bv) & np.isfinite(bv) & (bv >= _BV_VALID_LO) & (bv <= _BV_VALID_HI)
+    )
     teff_from_bv = bv_to_teff(bv.to_numpy())
     df["teff"] = np.where(has_bv, teff_from_bv, TEFF_DEFAULT_K)
     df["teff"] = np.where(

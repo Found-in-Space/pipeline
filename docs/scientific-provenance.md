@@ -47,24 +47,31 @@ distance_pc = 1000 / parallax_mas
 
 The Gaia stage selects distance in tiers:
 
-1. Primary quality-tested candidate: Gaia DR3 parallax, Bailer-Jones geometric
-   distance, or Bailer-Jones photogeometric distance. The score is fractional
-   parallax error or fractional distance interval width. Small penalties favor
-   parallax over geometric and geometric over photogeometric when scores are
-   close.
+1. Primary quality-tested candidate: Bailer-Jones geometric or
+   photogeometric distance. The score is the fractional half-width of the
+   16th–84th percentile interval. Intervals must contain their positive median
+   in the correct order. A small selection-only penalty favors the less
+   model-dependent geometric posterior when widths are close; the reported
+   `astrometry_quality` remains the unpenalized fractional interval width.
 2. Weak catalog fallback: any positive photogeometric, geometric, or parallax
-   distance that failed the primary quality test.
+   distance that failed the primary quality test. Raw `1000/parallax` is in
+   this review tier because the available Bailer-Jones products provide a
+   positive-distance posterior and account for the Gaia EDR3 parallax zero
+   point.
 3. Photometric fallback from Gaia apparent G, GSP-Phot absolute `M_G`, and
    extinction `A_G`.
 4. Synthetic prior from apparent G, extinction if valid, and fixed `M_G = 4.0`.
 
 Hipparcos uses valid positive `Plx` and `e_Plx`; distance is `1000 / Plx` and
-`astrometry_quality` is `e_Plx / Plx`. Invalid Hipparcos parallax leaves the
-distance as null and marks the row for review.
+`astrometry_quality` is `e_Plx / Plx`. Rows with fractional parallax error
+above `0.2` are retained because Hipparcos has no alternative distance product,
+but are explicitly marked for review. Invalid Hipparcos parallax leaves the
+distance as null and is removed from the staged output.
 
-`astrometry_quality` is lower-is-better. Gaia fallback tiers use finite sentinel
-scores: `10.0` for weak catalog, `20.0` for photometric, and `50.0` for
-synthetic prior.
+`astrometry_quality` is lower-is-better. A raw-parallax fallback retains its
+fractional parallax error when available. Other Gaia fallback tiers use finite
+sentinel scores: `10.0` for a catalog value without a valid interval, `20.0`
+for photometric distance, and `50.0` for a synthetic prior.
 
 ## Magnitude And Temperature
 
@@ -84,8 +91,15 @@ Gaia absolute magnitude cascade:
 3. distance-modulus fallback without extinction correction.
 
 Gaia `photometry_quality` is half the GSP-Phot magnitude interval when
-`mg_gspphot_lower` and `mg_gspphot_upper` are valid; otherwise it is
-approximately `2.17 * astrometry_quality`.
+`mg_gspphot_lower` and `mg_gspphot_upper` are valid. For magnitudes derived
+from apparent Gaia G and distance it is approximately
+`2.17 * astrometry_quality`; a GSP-Phot magnitude without a valid interval has
+unknown (`NaN`) quality rather than a fabricated uncertainty.
+GSP-Phot intervals are accepted only when the finite 16th percentile, median,
+and 84th percentile are ordered correctly. A central GSP-Phot magnitude with
+finite malformed bounds is rejected so the cascade can use Gaia G instead.
+The photometry provenance bits distinguish a GSP-Phot absolute magnitude from
+an absolute magnitude derived from Gaia G.
 
 For visual comparisons between staged rows, use the apparent magnitude implied
 by the pipeline render fields:
@@ -125,6 +139,11 @@ blackbody approximation:
 T = 4600 * (1 / (0.92 * (B-V) + 1.7) + 1 / (0.92 * (B-V) + 0.62))
 ```
 
+Color-derived temperatures are used only inside the documented approximation
+domains: `BP-RP` from `-0.5` through `3.5`, and Johnson `B-V` from `-0.5`
+through `2.5`. Finite out-of-domain values use the default rather than being
+silently clamped and reported as measured color temperatures.
+
 ## Coordinates
 
 Catalog rows are converted to Sun-centered Cartesian ICRS parsec coordinates.
@@ -134,6 +153,10 @@ with no radial velocity applied. Output coordinates are:
 ```text
 x_icrs_pc, y_icrs_pc, z_icrs_pc, ra_deg, dec_deg, r_pc
 ```
+
+A missing proper-motion component uses a zero-motion fallback so it cannot
+erase an otherwise valid position. In particular, a Gaia row already at
+J2016.0 retains its catalog position even when motion is unavailable.
 
 ## Quality Flags
 
@@ -145,7 +168,7 @@ x_icrs_pc, y_icrs_pc, z_icrs_pc, ra_deg, dec_deg, r_pc
 - bit 7: finite positive distance exists;
 - bit 8: fallback tier needs review;
 - bit 9: distance is within broad plausibility bounds;
-- bits 10-11: photometry source, such as Gaia G or Hipparcos Hp.
+- bits 10-11: photometry source: Gaia G, Hipparcos Hp, or Gaia GSP-Phot.
 
 Use the `qf_*` helpers in `foundinspace.pipeline.constants` when reading these
 bits from Python.

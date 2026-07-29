@@ -35,12 +35,21 @@ def calculate_coordinates(df: pd.DataFrame) -> pd.DataFrame:
     """
     canonical_epoch = Time(CANONICAL_EPOCH_JYEAR, format="jyear")
 
+    # Missing proper motion must not erase a valid catalog position. This is
+    # especially important for rows already at J2016.0, where no propagation
+    # is needed. For earlier epochs, zero is the conservative static-position
+    # fallback when the catalog provides no motion.
+    pmra = df["pmra_use_masyr"].astype(float).to_numpy()
+    pmdec = df["pmdec_use_masyr"].astype(float).to_numpy()
+    pmra = np.where(np.isfinite(pmra), pmra, 0.0)
+    pmdec = np.where(np.isfinite(pmdec), pmdec, 0.0)
+
     c = SkyCoord(
         ra=df["ra_use_deg"].astype(float).to_numpy() * u.deg,
         dec=df["dec_use_deg"].astype(float).to_numpy() * u.deg,
         distance=df["distance_use_pc"].astype(float).to_numpy() * u.pc,
-        pm_ra_cosdec=df["pmra_use_masyr"].astype(float).to_numpy() * u.mas / u.yr,
-        pm_dec=df["pmdec_use_masyr"].astype(float).to_numpy() * u.mas / u.yr,
+        pm_ra_cosdec=pmra * u.mas / u.yr,
+        pm_dec=pmdec * u.mas / u.yr,
         obstime=Time(df["epoch_yr"].astype(float).to_numpy(), format="jyear"),
         frame="icrs",
     )
@@ -78,8 +87,10 @@ def calculate_coordinates_fast(df: pd.DataFrame) -> pd.DataFrame:
     dec = np.deg2rad(df["dec_use_deg"].to_numpy(dtype=np.float64, copy=False))
     r0 = df["distance_use_pc"].to_numpy(dtype=np.float64, copy=False)
 
-    mu_a = df["pmra_use_masyr"].to_numpy(dtype=np.float64, copy=False) * MAS_TO_RAD
-    mu_d = df["pmdec_use_masyr"].to_numpy(dtype=np.float64, copy=False) * MAS_TO_RAD
+    pmra = df["pmra_use_masyr"].to_numpy(dtype=np.float64, copy=False)
+    pmdec = df["pmdec_use_masyr"].to_numpy(dtype=np.float64, copy=False)
+    mu_a = np.where(np.isfinite(pmra), pmra, 0.0) * MAS_TO_RAD
+    mu_d = np.where(np.isfinite(pmdec), pmdec, 0.0) * MAS_TO_RAD
 
     dt = CANONICAL_EPOCH_JYEAR - df["epoch_yr"].to_numpy(dtype=np.float64, copy=False)
 

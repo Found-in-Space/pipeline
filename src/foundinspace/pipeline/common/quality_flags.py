@@ -12,7 +12,9 @@ from foundinspace.pipeline.constants import (
     FLAG_DIST_PLAUSIBLE,
     FLAG_DIST_VALID,
     FLAG_NEEDS_REVIEW,
+    PHOT_SRC_MASK,
     PHOT_SRC_SHIFT,
+    TEFF_SRC_MASK,
     TEFF_SRC_SHIFT,
 )
 
@@ -54,14 +56,33 @@ def pack_status_flags(
     return (dist_src_bits | valid_bit | review_bit | plausible_bit).astype(np.uint16)
 
 
-def add_photometry_source(flags: object, phot_src: int) -> np.ndarray:
-    """OR a photometry source value into existing quality flags."""
+def add_photometry_source(flags: object, phot_src: object) -> np.ndarray:
+    """Set a photometry source value in existing quality flags."""
     base = np.asarray(flags, dtype=np.uint16)
-    return (base | (np.uint16(phot_src) << PHOT_SRC_SHIFT)).astype(np.uint16)
+    cleared = base & np.uint16(~PHOT_SRC_MASK & 0xFFFF)
+    return (cleared | (np.uint16(phot_src) << PHOT_SRC_SHIFT)).astype(np.uint16)
 
 
 def add_teff_source(flags: object, teff_src: object) -> np.ndarray:
-    """OR Teff source values into existing quality flags."""
+    """Set Teff source values in existing quality flags."""
     base = np.asarray(flags, dtype=np.uint16)
     teff_src_bits = np.asarray(teff_src, dtype=np.uint16)
-    return (base | (teff_src_bits << TEFF_SRC_SHIFT)).astype(np.uint16)
+    cleared = base & np.uint16(~TEFF_SRC_MASK & 0xFFFF)
+    return (cleared | (teff_src_bits << TEFF_SRC_SHIFT)).astype(np.uint16)
+
+
+def combine_quality_flags(
+    astrometry_flags: object,
+    photometry_flags: object,
+    teff_flags: object,
+) -> np.ndarray:
+    """Combine independently selected astrometry, photometry, and Teff provenance."""
+    astrometry = np.asarray(astrometry_flags, dtype=np.uint16)
+    photometry = np.asarray(photometry_flags, dtype=np.uint16)
+    teff = np.asarray(teff_flags, dtype=np.uint16)
+    non_field_mask = np.uint16(~(PHOT_SRC_MASK | TEFF_SRC_MASK) & 0xFFFF)
+    return (
+        (astrometry & non_field_mask)
+        | (photometry & np.uint16(PHOT_SRC_MASK))
+        | (teff & np.uint16(TEFF_SRC_MASK))
+    ).astype(np.uint16)

@@ -49,3 +49,15 @@ def test_distance_masks_and_interval_width():
         ),
         np.array([0.15]),
     )
+
+
+def test_distance_interval_width_rejects_malformed_quantiles():
+    np.testing.assert_allclose(
+        fractional_distance_interval_width(
+            np.array([100.0, 100.0, 100.0, 100.0]),
+            np.array([90.0, 110.0, 90.0, -1.0]),
+            np.array([120.0, 120.0, 80.0, 120.0]),
+        ),
+        np.array([0.15, np.nan, np.nan, np.nan]),
+        equal_nan=True,
+    )

@@ -21,8 +21,9 @@ from foundinspace.pipeline.constants import (
     DIST_SRC_UNKNOWN,
 )
 
-LAMBDA_PHOTO = 0.02
-LAMBDA_GEO = 0.01
+# Small model penalty used only to break close geometric/photogeometric
+# posterior-width comparisons. It is not part of the reported uncertainty.
+LAMBDA_PHOTOGEO = 0.01
 
 # Finite quality sentinels for non-primary tiers (no inf leakage into photometry_quality).
 QUALITY_FALLBACK_CATALOG = 10.0
@@ -77,7 +78,7 @@ def _first_valid_catalog(
 def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     """Gaia-only astrometry: multi-tier distance selection with explicit provenance.
 
-    Tier A  primary              – best of DR3 / BJ_GEO / BJ_PHOTOGEO (quality-tested).
+    Tier A  primary              – best valid BJ_GEO / BJ_PHOTOGEO posterior.
     Tier B  fallback_catalog     – any positive finite catalog value:
                                    r_med_photogeo → r_med_geo → 1000/parallax (plx>0).
     Tier C  fallback_photometric – photometric distance from GSP-Phot M_G and A_G.
@@ -116,29 +117,41 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     f_geo = fractional_distance_interval_width(r_geo, r_lo_g, r_hi_g)
     f_photogeo = fractional_distance_interval_width(r_photo, r_lo_p, r_hi_p)
 
-    valid_dr3 = np.isfinite(f_dr3)
-    valid_geo = np.isfinite(f_geo) & finite_positive_mask(r_geo)
-    valid_photogeo = np.isfinite(f_photogeo) & finite_positive_mask(r_photo)
-    any_valid = valid_dr3 | valid_geo | valid_photogeo
+    valid_geo = np.isfinite(f_geo)
+    valid_photogeo = np.isfinite(f_photogeo)
+    any_valid = valid_geo | valid_photogeo
 
-    # Tier A: best quality-tested candidate
-    _src_a = np.array(["DR3", "BJ_GEO", "BJ_PHOTOGEO"])
-    cand = np.column_stack(
+    # Tier A: prefer the narrower valid Bailer-Jones posterior, with a small
+    # tie-break penalty for the more model-dependent photogeometric estimate.
+    # Raw inverse parallax is deliberately a fallback: the joined BJ products
+    # account for the Gaia EDR3 parallax zero point and provide a proper
+    # positive-distance posterior.
+    _src_a = np.array(["BJ_GEO", "BJ_PHOTOGEO"])
+    selection_score = np.column_stack(
         [
-            np.where(valid_dr3, f_dr3, np.inf),
-            np.where(valid_geo, f_geo + LAMBDA_GEO, np.inf),
-            np.where(valid_photogeo, f_photogeo + LAMBDA_PHOTO, np.inf),
+            np.where(valid_geo, f_geo, np.inf),
+            np.where(
+                valid_photogeo,
+                f_photogeo + LAMBDA_PHOTOGEO,
+                np.inf,
+            ),
         ]
     )
-    best_idx_a = np.argmin(cand, axis=1)
-    score_a = cand[np.arange(len(df)), best_idx_a]
+    raw_quality = np.column_stack(
+        [
+            np.where(valid_geo, f_geo, np.inf),
+            np.where(valid_photogeo, f_photogeo, np.inf),
+        ]
+    )
+    best_idx_a = np.argmin(selection_score, axis=1)
+    score_a = raw_quality[np.arange(len(df)), best_idx_a]
     src_a_names = _src_a[best_idx_a]
 
     plx_dist = parallax_distance_pc(plx)
     dist_a = np.where(
-        src_a_names == "DR3",
-        plx_dist,
-        np.where(src_a_names == "BJ_GEO", r_geo, r_photo),
+        src_a_names == "BJ_GEO",
+        r_geo,
+        r_photo,
     )
 
     # Tier B: soft catalog fallback
@@ -154,10 +167,27 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     # Tier C: photometric distance (phot_g_mean_mag; assign_photometry_gaia not run yet)
     g_mag = df["phot_g_mean_mag"].to_numpy(float)
     mg = df["mg_gspphot"].to_numpy(float)
+    mg_lower = (
+        df["mg_gspphot_lower"].to_numpy(float)
+        if "mg_gspphot_lower" in df
+        else np.full(len(df), np.nan)
+    )
+    mg_upper = (
+        df["mg_gspphot_upper"].to_numpy(float)
+        if "mg_gspphot_upper" in df
+        else np.full(len(df), np.nan)
+    )
     ag = df["ag_gspphot"].to_numpy(float)
 
     mag_ok = np.isfinite(g_mag)
-    mg_ok = np.isfinite(mg) & (mg > -10) & (mg < 15)
+    mg_bounds_present = np.isfinite(mg_lower) & np.isfinite(mg_upper)
+    mg_bounds_valid = mg_bounds_present & (mg_lower <= mg) & (mg <= mg_upper)
+    mg_ok = (
+        np.isfinite(mg)
+        & (mg > -10)
+        & (mg < 15)
+        & (~mg_bounds_present | mg_bounds_valid)
+    )
     ag_ok = np.isfinite(ag) & (ag >= 0) & (ag < 5)
     ag_use = np.where(ag_ok, ag, 0.0)
 
@@ -195,6 +225,10 @@ def select_astrometry_gaia(df: pd.DataFrame) -> pd.DataFrame:
     distance[tier_b_ok] = tier_b_dist[tier_b_ok]
     source[tier_b_ok] = tier_b_source[tier_b_ok]
     quality[tier_b_ok] = QUALITY_FALLBACK_CATALOG
+    tier_b_dr3_with_error = (
+        tier_b_ok & (tier_b_source == "DR3_WEAK") & np.isfinite(f_dr3)
+    )
+    quality[tier_b_dr3_with_error] = f_dr3[tier_b_dr3_with_error]
 
     distance[any_valid] = dist_a[any_valid]
     source[any_valid] = src_a_names[any_valid]

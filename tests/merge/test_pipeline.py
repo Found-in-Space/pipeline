@@ -9,7 +9,23 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from foundinspace.pipeline.constants import OUTPUT_COLS
+from foundinspace.pipeline.common.quality_flags import (
+    add_photometry_source,
+    add_teff_source,
+    pack_status_flags,
+)
+from foundinspace.pipeline.constants import (
+    DIST_SRC_DR3,
+    DIST_SRC_HIP,
+    OUTPUT_COLS,
+    PHOT_SRC_GAIA_GSPPHOT,
+    PHOT_SRC_HIP_HP,
+    TEFF_SRC_BV,
+    TEFF_SRC_GSPPHOT,
+    qf_dist_src,
+    qf_phot_src,
+    qf_teff_src,
+)
 from foundinspace.pipeline.gaia.download.fieldsets import (
     fields_by_sidecar,
     load_gaia_field_sets,
@@ -19,9 +35,11 @@ from foundinspace.pipeline.merge.overrides import OVERRIDE_REQUIRED_COLS
 from foundinspace.pipeline.merge.pipeline import run_merge
 from foundinspace.pipeline.merge.policy import (
     _choose_matched_winner,
+    _choose_photometry_donor,
     _safe_float,
     _safe_int,
     _safe_score,
+    fuse_matched_payload,
 )
 
 
@@ -325,6 +343,10 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
     assert report.matched_pairs_scored == 2
     assert report.matched_winner_gaia == 2
     assert report.matched_winner_hip == 0
+    assert report.matched_photometry_gaia == 2
+    assert report.matched_photometry_hip == 0
+    assert report.matched_teff_gaia == 2
+    assert report.matched_teff_hip == 0
     assert report.unmatched_gaia == 1
     assert report.unmatched_hip == 1
     assert report.override_replace_applied == 2
@@ -338,6 +360,9 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
     assert "override_no_effect" in set(decisions_df["decision_type"].astype(str))
     score_decisions = decisions_df[decisions_df["decision_type"].astype(str) == "score"]
     assert set(score_decisions["mapping_source"].astype(str)) == {"test"}
+    assert set(score_decisions["astrometry_donor"].astype(str)) == {"gaia"}
+    assert set(score_decisions["photometry_donor"].astype(str)) == {"gaia"}
+    assert set(score_decisions["teff_donor"].astype(str)) == {"gaia"}
 
     report_json = json.loads(
         (output_dir / "merge_report.json").read_text(encoding="utf-8")
@@ -688,3 +713,89 @@ class TestSafeHelpers:
     def test_safe_score_inf_on_missing(self):
         assert _safe_score(None) == math.inf
         assert _safe_score(float("nan")) == math.inf
+
+    def test_safe_score_rejects_negative_quality(self):
+        assert _safe_score(-0.1) == math.inf
+
+
+def _flags(dist_src: int, phot_src: int, teff_src: int) -> int:
+    flags = pack_status_flags(dist_src, distance_valid=True)
+    flags = add_photometry_source(flags, phot_src)
+    flags = add_teff_source(flags, teff_src)
+    return int(flags)
+
+
+def test_fuse_matched_payload_rebases_best_photometry_to_best_astrometry():
+    gaia = _with_radec_r_pc(
+        {
+            "source": "gaia",
+            "source_id": 1001,
+            "x_icrs_pc": 10.0,
+            "y_icrs_pc": 0.0,
+            "z_icrs_pc": 0.0,
+            "mag_abs": 1.0,
+            "teff": 5100.0,
+            "quality_flags": _flags(
+                DIST_SRC_DR3,
+                PHOT_SRC_GAIA_GSPPHOT,
+                TEFF_SRC_GSPPHOT,
+            ),
+            "astrometry_quality": 0.5,
+            "photometry_quality": 0.05,
+        }
+    )
+    hip = _with_radec_r_pc(
+        {
+            "source": "hip",
+            "source_id": 2001,
+            "x_icrs_pc": 20.0,
+            "y_icrs_pc": 0.0,
+            "z_icrs_pc": 0.0,
+            "mag_abs": 2.0,
+            "teff": 6000.0,
+            "quality_flags": _flags(
+                DIST_SRC_HIP,
+                PHOT_SRC_HIP_HP,
+                TEFF_SRC_BV,
+            ),
+            "astrometry_quality": 0.05,
+            "photometry_quality": 0.2,
+        }
+    )
+
+    fused, photometry_donor, teff_donor, rebased = fuse_matched_payload(
+        gaia,
+        hip,
+        astrometry_donor="hip",
+    )
+
+    assert fused["r_pc"] == 20.0
+    assert fused["mag_abs"] == pytest.approx(1.0 - 5.0 * math.log10(2.0))
+    assert fused["photometry_quality"] == 0.05
+    assert fused["teff"] == 5100.0
+    assert photometry_donor == "gaia"
+    assert teff_donor == "gaia"
+    assert rebased
+    assert qf_dist_src(fused["quality_flags"]) == DIST_SRC_HIP
+    assert qf_phot_src(fused["quality_flags"]) == PHOT_SRC_GAIA_GSPPHOT
+    assert qf_teff_src(fused["quality_flags"]) == TEFF_SRC_GSPPHOT
+
+
+def test_photometry_donor_uses_hip_when_its_valid_uncertainty_is_lower():
+    assert (
+        _choose_photometry_donor(
+            {"mag_abs": 1.0, "r_pc": 10.0, "photometry_quality": 0.2},
+            {"mag_abs": 2.0, "r_pc": 20.0, "photometry_quality": 0.05},
+        )
+        == "hip"
+    )
+
+
+def test_photometry_donor_rejects_nonfinite_magnitude_even_with_better_score():
+    assert (
+        _choose_photometry_donor(
+            {"mag_abs": math.nan, "r_pc": 10.0, "photometry_quality": 0.01},
+            {"mag_abs": 2.0, "r_pc": 20.0, "photometry_quality": 0.2},
+        )
+        == "hip"
+    )

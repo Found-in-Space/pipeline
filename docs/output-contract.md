@@ -87,12 +87,22 @@ brightness-dependent margin used by the merge policy. The decision sidecar
 records the winner, scores, vetoes, tie-break reason, and relevant auxiliary
 columns.
 
-Winner selection currently copies the complete staged Gaia or Hipparcos
-physical payload. It does not select astrometry and render photometry from
-different donors. The brightness-dependent margin normally uses raw Gaia G,
-not the apparent magnitude reconstructed from both candidate render records.
-Those limitations must be addressed before policy-neutral local pair evidence
-is accepted automatically.
+Matched output construction selects fields independently:
+
+- the existing brightness-, topology-, and solution-aware winner policy
+  chooses the astrometry donor;
+- the valid staged render magnitude with the lower finite
+  `photometry_quality` is selected independently, with Gaia winning ties;
+- Gaia measured/derived effective temperature is preferred, then Hipparcos
+  color-derived temperature, then a default.
+
+When astrometry and photometry have different donors, the photometry donor's
+implied apparent render magnitude is preserved and its `mag_abs` is rebased to
+the selected distance. The packed quality flags are composed from the
+astrometry, photometry, and temperature donors rather than copied wholesale.
+The decision sidecar records all three donors and whether magnitude rebasing
+occurred. The brightness-dependent astrometry margin still normally uses raw
+Gaia G; pair acceptance remains separate from output field construction.
 
 ## HEALPix Shards And Reports
 
@@ -115,10 +125,10 @@ run. `merge_decisions.parquet` records matched-pair and override decisions only;
 unmatched Gaia rows are counted in aggregate rather than recorded per-row.
 
 `merge quality-report` writes post-merge audit outputs for suspicious rows and
-decisions. The current audit uses fractional radial-distance disagreement and
-does not populate its declared apparent-magnitude comparison fields. It
-therefore does not yet validate the proposed visual pairing policy. These
-reports are publication evidence, not replacement inputs.
+decisions. It records radial-distance disagreement, full Cartesian separation,
+and the apparent render magnitude reconstructed from each staged candidate.
+These reports are publication evidence, not replacement inputs or a
+pair-acceptance decision.
 
 ## Sidecars
 

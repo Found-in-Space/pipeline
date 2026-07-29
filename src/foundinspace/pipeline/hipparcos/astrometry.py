@@ -10,6 +10,7 @@ from foundinspace.pipeline.common.quality_flags import pack_distance_flags
 from foundinspace.pipeline.constants import DIST_SRC_HIP
 
 HIPPARCOS_EPOCH_JYEAR = 1991.25
+HIP_PRIMARY_MAX_FRACTIONAL_ERROR = 0.2
 
 
 def select_astrometry_hip(df: pd.DataFrame) -> pd.DataFrame:
@@ -24,6 +25,7 @@ def select_astrometry_hip(df: pd.DataFrame) -> pd.DataFrame:
     e_plx = df["e_Plx"].astype(float).to_numpy()
     valid = valid_parallax_mask(plx_arr, e_plx)
     f_hip = fractional_parallax_error(plx_arr, e_plx)
+    primary_quality = valid & (f_hip <= HIP_PRIMARY_MAX_FRACTIONAL_ERROR)
 
     df["best_source"] = "HIP"
     df["best_score"] = f_hip
@@ -34,7 +36,7 @@ def select_astrometry_hip(df: pd.DataFrame) -> pd.DataFrame:
     df["quality_flags"] = pack_distance_flags(
         np.full(plx_arr.shape, DIST_SRC_HIP, dtype=np.uint16),
         distance_pc=dist_pc,
-        needs_review=~valid,
+        needs_review=~primary_quality,
     )
     df["ra_use_deg"] = df["ra_deg"].astype(float)
     df["dec_use_deg"] = df["dec_deg"].astype(float)
