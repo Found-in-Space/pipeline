@@ -80,6 +80,16 @@ The Sun source record is
 origin coordinates from published physical values and records structured
 citations for Johnson V absolute magnitude and nominal effective temperature.
 
+Distance exceptions that still need external evidence are tracked separately in
+`src/foundinspace/pipeline/overrides/research/distance-resolution-v1.csv`.
+Those rows are deliberately non-executable: they record the exact Gaia/HIP
+identity, current fallback, and reason for research without changing a build.
+`scripts/research_override_distances.py` collects SIMBAD measurements and
+bibcodes, Gaia DR3 astrometry and Bailer-Jones intervals, and StarHorse
+photo-astrometric intervals into `downloads/distance-resolution-v1/`. Only a
+reviewed result with a durable reference is promoted to a versioned YAML
+`replace` override.
+
 For automatic matched-pair decisions, Gaia wins by default. Hipparcos can win
 only when the crossmatch is unambiguous, the Hipparcos solution type is the
 standard single-star solution, and its astrometry score beats Gaia by the
