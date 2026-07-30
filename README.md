@@ -21,12 +21,15 @@ uv run fis-pipeline project init-run --profile small \
   /data/fis/runs/stars/stars-small-dev
 uv run fis-pipeline project validate --project \
   /data/fis/runs/stars/stars-small-dev/pipeline.toml
+uv run fis-pipeline overrides download --project \
+  /data/fis/runs/stars/stars-small-dev/pipeline.toml
 ```
 
 The named run directory keeps the exact configuration and immutable command
 provenance together. Catalog payloads may remain on specialist volumes through
 explicit paths in `pipeline.toml`. The `small` profile uses real catalog
-downloads, including the scripted Gaia path.
+downloads, including the scripted Gaia path, and pins the published stellar
+override catalog by its release-specific Zenodo DOI and archive SHA-256.
 
 For the guided path, start with [docs/README.md](docs/README.md).
 
@@ -45,7 +48,8 @@ Command groups:
 - `hip` - download and process Hipparcos.
 - `gaia-to-hip` - download and build the Gaia-to-Hipparcos crossmatch sidecar.
 - `identifiers` - download and build sparse name/designation sidecars.
-- `overrides` - build merger-ready manual overrides from YAML.
+- `overrides` - acquire a version-pinned Zenodo release and build
+  merger-ready manual overrides from its YAML catalogs.
 - `merge` - stream Gaia, Hipparcos, crossmatch, and overrides into merged shards.
 
 See [docs/run-configuration.md](docs/run-configuration.md) for the release
@@ -60,7 +64,7 @@ src/foundinspace/pipeline/
   hipparcos/       Hipparcos input -> staged Parquet
   gaia_to_hip/     Gaia DR3 <-> Hipparcos crossmatch sidecar
   identifiers/     sparse name/designation sidecar
-  overrides/       manual curated rows
+  overrides/       version-pinned acquisition and curated-row processing
   merge/           canonical merged output
   constants.py     shared schema and quality flags
   project.py       pipeline.toml contract and profile rendering

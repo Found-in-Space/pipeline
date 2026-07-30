@@ -7,7 +7,8 @@ HEALPix-sharded Parquet dataset.
 The documentation is intentionally small:
 
 - [Run configuration](run-configuration.md) explains how to run the pipeline,
-  what `pipeline.toml` controls, and how named runs capture a reproducible
+  what `pipeline.toml` controls, how the published override catalog is acquired
+  by Version DOI and checksum, and how named runs capture a reproducible
   publication run.
 - [Download packages](download-packages.md) defines the local evidence bundle
   layout for completed source downloads, including hardlinked payloads,

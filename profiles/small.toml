@@ -36,10 +36,14 @@ output_parquet = "data/processed/identifiers_map.parquet"
 
 [overrides]
 output_parquet = "data/processed/overrides.parquet"
-# data_dir = "path/to/overrides"
-# Pin reviewed releases explicitly, for example the tracked
-# tools/curation/distance_resolution_v1/distance-resolution-v1-resolved.yaml.
-source_paths = []
+zenodo_version_doi = "10.5281/zenodo.21703732"
+zenodo_archive = "fis-overrides-20260730.2.zip"
+zenodo_archive_sha256 = "1f4a7544fe1257d50d7f5a00e9626404a05ea077bc1a305c72fb9eee6448981f"
+zenodo_download_dir = "data/catalogs/fis-overrides-20260730.2"
+source_paths = [
+  "data/catalogs/fis-overrides-20260730.2/catalog/alpha_cen.yaml",
+  "data/catalogs/fis-overrides-20260730.2/catalog/distance_resolution_v1_resolved.yaml",
+]
 
 [merge]
 output_dir = "data/processed/merged-small"

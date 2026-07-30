@@ -28,10 +28,11 @@ no visible Sun.
 The core merged stellar catalog and its octree exclude the Sun.
 
 - The origin remains a coordinate-frame contract, not a catalog row.
-- The pipeline has no packaged default overrides. Controlled builds select all
-  override sources explicitly and record their versions and checksums.
-- The reviewed poor-distance override dataset contains catalog corrections
-  only. It does not include the Sun.
+- The pipeline has no hidden overrides packaged in its Python distribution.
+  Standard controlled builds explicitly select the published stellar override
+  release by Version DOI and checksum.
+- The cumulative stellar override release contains catalog corrections only.
+  It does not include the Sun.
 - Published solar reference values live in their own optional catalog
   publication rather than in pipeline code or a core octree.
 - Applications that want a visible or interactive Sun load that publication,

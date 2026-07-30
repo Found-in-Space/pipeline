@@ -10,6 +10,7 @@ from foundinspace.pipeline.cli_support import (
 )
 from foundinspace.pipeline.identifiers.download import main as download_command
 from foundinspace.pipeline.identifiers.pipeline import prepare_identifiers_sidecar
+from foundinspace.pipeline.overrides.download import validate_cached_override_release
 
 
 @click.group(name="identifiers")
@@ -58,34 +59,59 @@ def build(
         inputs["override_data_dir"] = overrides_data_dir
     if overrides_source_paths is not None:
         inputs["override_sources"] = overrides_source_paths
+    if project.overrides.zenodo_download_dir is not None:
+        inputs["override_release"] = project.overrides.zenodo_download_dir
 
-    with record_command_or_die(
-        project,
-        command="identifiers build",
-        parameters={"force": force},
-        inputs=inputs,
-        outputs={"identifier_sidecar": project.identifiers.output_parquet},
-    ):
-        for name, path in source_catalogs.items():
-            require_input_file(path, label=f"[identifiers] {name}_ecsv")
-        require_input_file(
-            crossmatch,
-            label="[gaia-to-hip] output_parquet",
-        )
-        if overrides_source_paths is not None:
-            for source_path in overrides_source_paths:
-                require_input_file(
-                    source_path,
-                    label="[overrides] source_paths entry",
+    try:
+        with record_command_or_die(
+            project,
+            command="identifiers build",
+            parameters={"force": force},
+            inputs=inputs,
+            outputs={"identifier_sidecar": project.identifiers.output_parquet},
+        ):
+            for name, path in source_catalogs.items():
+                require_input_file(path, label=f"[identifiers] {name}_ecsv")
+            require_input_file(
+                crossmatch,
+                label="[gaia-to-hip] output_parquet",
+            )
+            if overrides_source_paths is not None:
+                for source_path in overrides_source_paths:
+                    require_input_file(
+                        source_path,
+                        label="[overrides] source_paths entry",
+                    )
+            if project.overrides.zenodo_configured:
+                version_doi = project.overrides.zenodo_version_doi
+                archive_name = project.overrides.zenodo_archive
+                archive_sha256 = project.overrides.zenodo_archive_sha256
+                download_dir = project.overrides.zenodo_download_dir
+                if (
+                    version_doi is None
+                    or archive_name is None
+                    or archive_sha256 is None
+                    or download_dir is None
+                    or overrides_source_paths is None
+                ):
+                    raise ValueError("[overrides] has an incomplete Zenodo release pin")
+                validate_cached_override_release(
+                    download_dir,
+                    version_doi=version_doi,
+                    archive_name=archive_name,
+                    archive_sha256=archive_sha256,
+                    source_paths=overrides_source_paths,
                 )
-        out = prepare_identifiers_sidecar(
-            source_catalogs["hip_hd"],
-            source_catalogs["iv27a_catalog"],
-            source_catalogs["iv27a_proper_names"],
-            project.identifiers.output_parquet,
-            crossmatch_parquet=crossmatch,
-            overrides_data_dir=overrides_data_dir,
-            overrides_source_paths=overrides_source_paths,
-            overwrite=force,
-        )
+            out = prepare_identifiers_sidecar(
+                source_catalogs["hip_hd"],
+                source_catalogs["iv27a_catalog"],
+                source_catalogs["iv27a_proper_names"],
+                project.identifiers.output_parquet,
+                crossmatch_parquet=crossmatch,
+                overrides_data_dir=overrides_data_dir,
+                overrides_source_paths=overrides_source_paths,
+                overwrite=force,
+            )
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
     click.echo(f"Wrote wide identifier sidecar to {out.resolve()}")

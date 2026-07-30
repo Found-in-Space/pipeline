@@ -115,7 +115,7 @@ def prepare_overrides_parquet(
     source_paths: tuple[Path, ...] | None = None,
     overwrite: bool = False,
 ) -> Path:
-    """Write ``output_path`` (zstd Parquet) from packaged or custom override YAML dir."""
+    """Write ``output_path`` from explicitly selected override YAML catalogs."""
     output_path = Path(output_path).expanduser()
     if output_path.exists() and not overwrite:
         raise FileExistsError(str(output_path))

@@ -1,1 +1,1 @@
-"""Manual override sources and merger-ready override table helpers."""
+"""Version-pinned acquisition and merger-ready override table helpers."""

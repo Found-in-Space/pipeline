@@ -191,6 +191,82 @@ output_parquet = "derived/identifiers.parquet"
     assert not called
 
 
+def test_identifiers_build_revalidates_configured_zenodo_override_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    for name in ("hip-hd.ecsv", "catalog.ecsv", "names.ecsv"):
+        (raw_dir / name).write_text("fixture\n", encoding="utf-8")
+    derived_dir = tmp_path / "derived"
+    derived_dir.mkdir()
+    (derived_dir / "map.parquet").write_text("fixture\n", encoding="utf-8")
+    release_dir = tmp_path / "release"
+    (release_dir / "catalog").mkdir(parents=True)
+    (release_dir / "catalog/alpha_cen.yaml").write_text(
+        "stars: []\n",
+        encoding="utf-8",
+    )
+    (release_dir / "catalog/distance_resolution_v1_resolved.yaml").write_text(
+        "stars: []\n",
+        encoding="utf-8",
+    )
+    project_path = _write_project(
+        tmp_path / "project.toml",
+        """
+[gaia-to-hip]
+download_ecsv = "raw/best-neighbour.ecsv"
+output_parquet = "derived/map.parquet"
+
+[identifiers]
+hip_hd_ecsv = "raw/hip-hd.ecsv"
+iv27a_catalog_ecsv = "raw/catalog.ecsv"
+iv27a_proper_names_ecsv = "raw/names.ecsv"
+output_parquet = "derived/identifiers.parquet"
+
+[overrides]
+output_parquet = "derived/overrides.parquet"
+zenodo_version_doi = "10.5281/zenodo.21703732"
+zenodo_archive = "fis-overrides-20260730.2.zip"
+zenodo_archive_sha256 = "1111111111111111111111111111111111111111111111111111111111111111"
+zenodo_download_dir = "release"
+source_paths = [
+  "release/catalog/alpha_cen.yaml",
+  "release/catalog/distance_resolution_v1_resolved.yaml",
+]
+""",
+    )
+    prepared = False
+
+    def reject_release(*args, **kwargs):
+        raise ValueError("tampered override release")
+
+    def fake_prepare(*args, **kwargs):
+        nonlocal prepared
+        prepared = True
+
+    monkeypatch.setattr(
+        identifiers_cli_module,
+        "validate_cached_override_release",
+        reject_release,
+    )
+    monkeypatch.setattr(
+        identifiers_cli_module,
+        "prepare_identifiers_sidecar",
+        fake_prepare,
+    )
+
+    result = CliRunner().invoke(
+        identifiers_cli,
+        ["build", "--project", str(project_path)],
+    )
+
+    assert result.exit_code != 0
+    assert "tampered override release" in result.output
+    assert not prepared
+
+
 def test_gaia_input_mode_controls_state_use(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

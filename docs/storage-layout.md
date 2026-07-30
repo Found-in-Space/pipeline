@@ -76,10 +76,18 @@ Small support inputs use the same principle:
 raw/hipparcos/i311/<retrieval-id>/hipparcos2.ecsv
 raw/gaia/dr3/hipparcos2-best-neighbour/<retrieval-id>/
 raw/gaia/dr3/hipparcos2-neighbourhood/<retrieval-id>/
+raw/fis-overrides/20260730.2/10.5281-zenodo.21703732/
 ```
 
 Convenience aliases such as `current` may exist for interactive inspection,
 but controlled project files must reference immutable identifiers.
+
+When the override release is cached inside a run instead of the shared raw
+tree, `[overrides].zenodo_download_dir` is its authoritative location. That
+directory retains the deposited ZIP, `zenodo-record.json`, extracted
+publication contents, and checksum manifest. It is an immutable acquired input;
+`overrides download --force` replaces it only after a new staged copy passes
+the complete validation contract.
 
 ## Hardlink Rules
 

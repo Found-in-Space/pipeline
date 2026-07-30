@@ -281,6 +281,64 @@ def test_load_project_rejects_override_data_dir_with_source_paths(
         load_project(project_path)
 
 
+def test_load_project_resolves_version_pinned_zenodo_override_release(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text().replace(
+            '[overrides]\noutput_parquet = "data/processed/overrides.parquet"\n',
+            (
+                "[overrides]\n"
+                'output_parquet = "data/processed/overrides.parquet"\n'
+                'zenodo_version_doi = "10.5281/zenodo.21703732"\n'
+                'zenodo_archive = "fis-overrides-20260730.2.zip"\n'
+                'zenodo_archive_sha256 = "'
+                "1f4a7544fe1257d50d7f5a00e9626404a05ea077bc1a305c72fb9eee6448981f"
+                '"\n'
+                'zenodo_download_dir = "data/catalogs/fis-overrides-20260730.2"\n'
+                "source_paths = [\n"
+                '  "data/catalogs/fis-overrides-20260730.2/catalog/alpha_cen.yaml",\n'
+                '  "data/catalogs/fis-overrides-20260730.2/catalog/'
+                'distance_resolution_v1_resolved.yaml",\n'
+                "]\n"
+            ),
+        ),
+        encoding="utf-8",
+    )
+
+    project = load_project(project_path)
+
+    assert project.overrides.zenodo_configured
+    assert project.overrides.zenodo_version_doi == "10.5281/zenodo.21703732"
+    assert project.overrides.zenodo_archive == "fis-overrides-20260730.2.zip"
+    assert (
+        project.overrides.zenodo_download_dir
+        == tmp_path / "data/catalogs/fis-overrides-20260730.2"
+    )
+
+
+def test_load_project_rejects_partial_zenodo_override_configuration(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.toml"
+    project_path.write_text(
+        _project_text().replace(
+            '[overrides]\noutput_parquet = "data/processed/overrides.parquet"\n',
+            (
+                "[overrides]\n"
+                'output_parquet = "data/processed/overrides.parquet"\n'
+                'zenodo_version_doi = "10.5281/zenodo.21703732"\n'
+            ),
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Incomplete Zenodo override configuration"):
+        load_project(project_path)
+
+
 def test_load_project_gaia_download_defaults_to_no_carry_fields(tmp_path: Path) -> None:
     project_path = tmp_path / "project.toml"
     project_path.write_text(
@@ -514,7 +572,15 @@ def test_render_project_template_is_valid_toml_with_all_sections() -> None:
     assert "output_parquet" in parsed["identifiers"]
 
     assert "output_parquet" in parsed["overrides"]
-    assert parsed["overrides"]["source_paths"] == []
+    assert parsed["overrides"]["zenodo_version_doi"] == "10.5281/zenodo.21703732"
+    assert parsed["overrides"]["zenodo_archive"] == "fis-overrides-20260730.2.zip"
+    assert parsed["overrides"]["source_paths"] == [
+        "data/catalogs/fis-overrides-20260730.2/catalog/alpha_cen.yaml",
+        (
+            "data/catalogs/fis-overrides-20260730.2/catalog/"
+            "distance_resolution_v1_resolved.yaml"
+        ),
+    ]
 
     assert "output_dir" in parsed["merge"]
     assert parsed["merge"]["healpix_order"] == 3
@@ -714,8 +780,8 @@ def test_controlled_validation_requires_explicit_gaia_and_override_inputs(
             "Gaia field set not found",
         ),
         (
-            "source_paths = []",
-            "source_paths = [1]",
+            ('"data/catalogs/fis-overrides-20260730.2/catalog/alpha_cen.yaml",'),
+            "1,",
             "overrides.source_paths",
         ),
         (

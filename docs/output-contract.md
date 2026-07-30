@@ -69,10 +69,15 @@ Manual overrides have highest precedence:
 - `replace` substitutes curated physical data and suppresses the partner row;
 - `add` inserts a manual row.
 
-The runtime default override set is empty. Controlled projects select every
-custom override YAML explicitly; each source must be pinned and captured in the
-publication provenance. Review targets and Gaia–Hipparcos pairing candidates
-remain evidence inputs until a project selects a reviewed override source.
+The packaged Python runtime contains no hidden override rows. The standard
+controlled-run profiles explicitly acquire Found in Space stellar overrides
+release `20260730.2` from Zenodo using Version DOI
+`10.5281/zenodo.21703732`, verify the pinned archive SHA-256 and publication
+checksum manifest, and select both catalog YAML files. Projects may choose a
+different published version or an explicit empty source list, but every source
+choice and content hash remains visible in the project and command provenance.
+Review targets and Gaia–Hipparcos pairing candidates remain evidence inputs
+until a published override release selects them.
 
 The Sun is not a core catalog row or pipeline override. The coordinate origin
 is part of the frame contract, while a visible or interactive Sun is an
@@ -93,12 +98,12 @@ measurements and bibcodes, Gaia DR3 astrometry and Bailer-Jones intervals, and
 StarHorse photo-astrometric intervals into `downloads/distance-resolution-v1/`.
 Promotion always requires a reviewed, versioned YAML `replace` override.
 
-The 48 currently resolved rows are materialized as the explicit custom source
-`tools/curation/distance_resolution_v1/distance-resolution-v1-resolved.yaml`.
-It is generated and checked against the tracker and preflight donor payloads by
-`tools.curation.distance_resolution_v1.build_overrides_cli`. It is not scanned
-by the runtime default; controlled projects must select it explicitly and
-record its checksum and pipeline commit.
+The 48 reviewed distance replacements are published together with the original
+three Alpha Centauri overrides in the cumulative Zenodo release. Their
+repository-side materialization is generated and checked against the tracker
+and preflight donor payloads by
+`tools.curation.distance_resolution_v1.build_overrides_cli`; runtime builds
+consume the published catalog snapshot rather than that curation workspace.
 
 For automatic matched-pair decisions, Gaia wins by default. Hipparcos can win
 only when the crossmatch is unambiguous, the Hipparcos solution type is the

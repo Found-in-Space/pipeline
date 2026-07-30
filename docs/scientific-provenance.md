@@ -12,6 +12,17 @@ distance table, and Gaia DR3 astrophysical parameters. Hipparcos rows come from
 the Hipparcos New Reduction catalog. Supporting feeds provide Gaia/Hipparcos
 crossmatches, display identifiers, and curated manual overrides.
 
+The standard controlled-run profiles obtain curated corrections from *Found in
+Space stellar overrides* release `20260730.2`, pinned to Zenodo Version DOI
+[`10.5281/zenodo.21703732`](https://doi.org/10.5281/zenodo.21703732) and archive
+SHA-256
+`1f4a7544fe1257d50d7f5a00e9626404a05ea077bc1a305c72fb9eee6448981f`.
+Its two YAML catalogs contain the cumulative 51-row `replace` set. The
+acquisition verifies the Zenodo record identity, deposited ZIP, internal
+checksum manifest, publication manifest, and the complete ordered pair of YAML
+catalogs. The override and identifier builders repeat that validation before
+using those catalogs.
+
 The canonical epoch is Gaia DR3 J2016.0. Hipparcos positions start at J1991.25
 and are propagated to J2016.0 before merge.
 

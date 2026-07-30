@@ -48,10 +48,23 @@ _IDENTIFIERS_KEYS = {
     "iv27a_proper_names_ecsv",
     "output_parquet",
 }
-_OVERRIDES_KEYS = {"output_parquet", "data_dir", "source_paths"}
+_OVERRIDE_ZENODO_KEYS = {
+    "zenodo_version_doi",
+    "zenodo_archive",
+    "zenodo_archive_sha256",
+    "zenodo_download_dir",
+}
+_OVERRIDES_KEYS = {
+    "output_parquet",
+    "data_dir",
+    "source_paths",
+    *_OVERRIDE_ZENODO_KEYS,
+}
 _MERGE_KEYS = {"output_dir", "healpix_order", "sidecar_output_dir"}
 _DIST_NAME = "found-in-space-pipeline"
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ZENODO_VERSION_DOI_RE = re.compile(r"^10\.5281/zenodo\.[1-9][0-9]*$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 GAIA_DOWNLOAD_MODES = ("small", "full")
 GAIA_DOWNLOAD_ACCESS_MODES = ("auto", "anonymous", "authenticated")
@@ -440,6 +453,48 @@ class OverridesConfig(_SectionAccessor):
     def source_paths(self) -> tuple[Path, ...] | None:
         return self._optional_path_list("source_paths")
 
+    @property
+    def zenodo_configured(self) -> bool:
+        return self._raw is not None and bool(
+            _OVERRIDE_ZENODO_KEYS.intersection(self._raw)
+        )
+
+    @property
+    def zenodo_version_doi(self) -> str | None:
+        value = self._optional_str_field("zenodo_version_doi")
+        if value is not None and not _ZENODO_VERSION_DOI_RE.fullmatch(value):
+            raise ValueError(
+                "overrides.zenodo_version_doi must be a canonical Zenodo DOI "
+                "such as '10.5281/zenodo.21703732'"
+            )
+        return value
+
+    @property
+    def zenodo_archive(self) -> str | None:
+        value = self._optional_str_field("zenodo_archive")
+        if value is not None and (
+            Path(value).name != value or not value.lower().endswith(".zip")
+        ):
+            raise ValueError(
+                "overrides.zenodo_archive must be a ZIP filename without a path"
+            )
+        return value
+
+    @property
+    def zenodo_archive_sha256(self) -> str | None:
+        value = self._optional_str_field("zenodo_archive_sha256")
+        if value is not None:
+            value = value.lower()
+            if not _SHA256_RE.fullmatch(value):
+                raise ValueError(
+                    "overrides.zenodo_archive_sha256 must be 64 hexadecimal characters"
+                )
+        return value
+
+    @property
+    def zenodo_download_dir(self) -> Path | None:
+        return self._optional_path("zenodo_download_dir")
+
 
 class MergeConfig(_SectionAccessor):
     @property
@@ -567,6 +622,12 @@ class PipelineProject:
                 paths["overrides.source_paths"] = [
                     str(path.resolve()) for path in self.overrides.source_paths
                 ]
+            if self.overrides.zenodo_download_dir is not None:
+                add(
+                    self.overrides,
+                    "zenodo_download_dir",
+                    self.overrides.zenodo_download_dir,
+                )
         if self.merge.is_configured:
             add(self.merge, "output_dir", self.merge.output_dir)
             add(self.merge, "sidecar_output_dir", self.merge.sidecar_output_dir)
@@ -680,6 +741,13 @@ def validate_controlled_project(project: PipelineProject) -> None:
             "Controlled projects must set overrides.source_paths explicitly; "
             "use [] to select no overrides"
         )
+    if project.overrides.zenodo_configured:
+        _ = (
+            project.overrides.zenodo_version_doi,
+            project.overrides.zenodo_archive,
+            project.overrides.zenodo_archive_sha256,
+            project.overrides.zenodo_download_dir,
+        )
     project.resolved_paths()
 
 
@@ -730,6 +798,14 @@ def load_project(project_path: Path) -> PipelineProject:
         raise ValueError(
             "overrides.data_dir and overrides.source_paths are mutually exclusive"
         )
+    if overrides_raw is not None:
+        configured_zenodo_keys = _OVERRIDE_ZENODO_KEYS.intersection(overrides_raw)
+        if configured_zenodo_keys and configured_zenodo_keys != _OVERRIDE_ZENODO_KEYS:
+            missing = sorted(_OVERRIDE_ZENODO_KEYS - configured_zenodo_keys)
+            raise ValueError(
+                "Incomplete Zenodo override configuration; missing "
+                + ", ".join(f"overrides.{key}" for key in missing)
+            )
 
     return PipelineProject(
         project_path=resolved_project_path,

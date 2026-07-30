@@ -24,9 +24,13 @@ uv run fis-pipeline project init-run --profile small \
 
 Edit `/data/fis/runs/stars/stars-small-20260730/pipeline.toml` to reference the
 exact immutable raw and derived inputs. Heavy inputs may live elsewhere; only
-their paths and identities are captured in the run directory. Set
-`[overrides].source_paths` to the reviewed YAML files, or leave the explicit
-empty list when no overrides are intended. Then validate the complete contract:
+their paths and identities are captured in the run directory. The checked-in
+profiles pin Found in Space stellar overrides release `20260730.2` by its
+Zenodo Version DOI and SHA-256 and explicitly select both published YAML
+catalogs. An ad-hoc project may instead omit the Zenodo fields and use its own
+explicit `source_paths`; a controlled project that deliberately uses no
+overrides must remove all four Zenodo fields and set `source_paths = []`.
+Then validate the complete contract:
 
 ```bash
 uv run fis-pipeline project validate --project \
@@ -45,6 +49,7 @@ Acquire the smaller supporting feeds explicitly, then build them:
 uv run fis-pipeline hip download --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 uv run fis-pipeline gaia-to-hip download --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 uv run fis-pipeline identifiers download --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline overrides download --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 
 uv run fis-pipeline hip build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 uv run fis-pipeline gaia-to-hip build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
@@ -125,14 +130,56 @@ The important sections are:
   Parquet path.
 - `[identifiers]`: source ECSV paths and processed sparse identifier sidecar
   path.
-- `[overrides]`: processed override table path plus optional custom override
-  YAML paths.
+- `[overrides]`: processed override table path, explicit YAML sources, and an
+  optional complete Zenodo acquisition pin consisting of
+  `zenodo_version_doi`, `zenodo_archive`, `zenodo_archive_sha256`, and
+  `zenodo_download_dir`.
 - `[merge]`: merged output directory, HEALPix order, and optional sidecar output
   directory.
 
 Ad-hoc projects need only the sections used by a command. A project containing
 `[run]` is controlled and every command enforces the complete production
 contract, including explicit Gaia input and override selection.
+
+## Version-pinned Override Release
+
+The standard profiles configure:
+
+```toml
+[overrides]
+output_parquet = "data/processed/overrides.parquet"
+zenodo_version_doi = "10.5281/zenodo.21703732"
+zenodo_archive = "fis-overrides-20260730.2.zip"
+zenodo_archive_sha256 = "1f4a7544fe1257d50d7f5a00e9626404a05ea077bc1a305c72fb9eee6448981f"
+zenodo_download_dir = "data/catalogs/fis-overrides-20260730.2"
+source_paths = [
+  "data/catalogs/fis-overrides-20260730.2/catalog/alpha_cen.yaml",
+  "data/catalogs/fis-overrides-20260730.2/catalog/distance_resolution_v1_resolved.yaml",
+]
+```
+
+The Concept DOI `10.5281/zenodo.21703731` is deliberately absent from the
+configuration because it resolves to the latest release rather than this exact
+input snapshot.
+
+`overrides download` derives the Zenodo record ID from the configured Version
+DOI, retrieves the
+[published record](https://zenodo.org/records/21703732), and requires the
+record's own DOI to equal the configured value. This rejects the Concept DOI,
+which follows the latest version. It then selects the exact named ZIP, verifies
+both the pinned SHA-256 and Zenodo's checksum, safely extracts it, verifies
+every file in
+`checksums.sha256`, and checks `manifest.toml` for the release, series, Version
+DOI, format, and ordered two-catalog consumer contract.
+
+The cached directory retains the original ZIP and the retrieved
+`zenodo-record.json` metadata receipt alongside the verified publication
+contents. Without `--force`, a valid cached release is reused without network
+access; an invalid or partial cache fails closed. `--force` stages and verifies
+the replacement before swapping it into place. Both runtime consumers,
+`overrides build` and `identifiers build`, independently revalidate the cached
+archive, receipt, checksum manifest, publication manifest, and selected source
+paths before loading any YAML.
 
 ## Command Provenance
 
@@ -196,7 +243,8 @@ run directory plus:
 - the exact accepted one-to-one Gaia/Hipparcos map used by the run;
 - the source pairing-evidence artifact, resolution decisions, policy version,
   thresholds, report, and hashes once pairing resolution is implemented;
-- override YAML paths or packaged override version;
+- the override YAML paths, Version DOI, original Zenodo ZIP, metadata receipt,
+  archive SHA-256, internal checksum manifest, and extracted source hashes;
 - merge report, merge decisions, quality report, and output checksums.
 
 If `../catalogs` publishes a source or deduplication snapshot, its manifest
