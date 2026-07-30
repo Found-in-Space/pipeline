@@ -14,6 +14,7 @@ _ALIAS_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*)\.")
 _VALID_DTYPES = {"float64", "int64", "uint64", "string", "bool"}
 _VALID_QUERY_ALIASES = {"g", "d", "ap", "aps"}
 _VALID_STAGE_SOURCES = {"input", "stage"}
+BUILTIN_GAIA_FIELD_SETS = ("motion", "mass", "mass_spec")
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,7 @@ class GaiaCarryField:
     expression: str | None = None
     field_set: str = ""
     unit: str | None = None
+    sidecar_column: str | None = None
 
     @property
     def output_column(self) -> str:
@@ -36,6 +38,10 @@ class GaiaCarryField:
     @property
     def input_column(self) -> str:
         return self.column or self.name
+
+    @property
+    def sidecar_output_column(self) -> str:
+        return self.sidecar_column or self.name
 
     @property
     def query_aliases(self) -> set[str]:
@@ -90,6 +96,11 @@ def _parse_field(raw: dict[str, Any], *, field_set: str, index: int) -> GaiaCarr
     sidecar = _require_string(raw, "sidecar", label=label)
     if not _IDENTIFIER_RE.match(sidecar):
         raise ValueError(f"{label}.sidecar must be a lowercase identifier")
+    sidecar_column = raw.get("sidecar_column")
+    if sidecar_column is not None and (
+        not isinstance(sidecar_column, str) or not _IDENTIFIER_RE.match(sidecar_column)
+    ):
+        raise ValueError(f"{label}.sidecar_column must be a lowercase identifier")
 
     expression = raw.get("expression")
     if expression is not None:
@@ -103,6 +114,7 @@ def _parse_field(raw: dict[str, Any], *, field_set: str, index: int) -> GaiaCarr
             expression=expression.strip(),
             field_set=field_set,
             unit=raw.get("unit") if isinstance(raw.get("unit"), str) else None,
+            sidecar_column=sidecar_column,
         )
         unknown_aliases = sorted(field.query_aliases - _VALID_QUERY_ALIASES)
         if unknown_aliases:
@@ -125,6 +137,7 @@ def _parse_field(raw: dict[str, Any], *, field_set: str, index: int) -> GaiaCarr
         column=column,
         field_set=field_set,
         unit=raw.get("unit") if isinstance(raw.get("unit"), str) else None,
+        sidecar_column=sidecar_column,
     )
 
 
@@ -186,3 +199,15 @@ def fields_by_sidecar(
     for field in fields:
         grouped.setdefault(field.sidecar, []).append(field)
     return {name: tuple(items) for name, items in sorted(grouped.items())}
+
+
+def infer_builtin_gaia_fields(
+    columns: tuple[str, ...] | list[str] | set[str],
+) -> tuple[GaiaCarryField, ...]:
+    """Return built-in carry fields represented by a staged Gaia schema."""
+    available = set(columns)
+    return tuple(
+        field
+        for field in load_gaia_field_sets(BUILTIN_GAIA_FIELD_SETS)
+        if field.output_column in available
+    )

@@ -16,7 +16,7 @@ from foundinspace.pipeline.common.gaia_credentials import (
     login_gaia_from_environment_if_available,
 )
 
-DEFAULT_TRACKER_PATH = Path(__file__).parent / "research" / "distance-resolution-v1.csv"
+DEFAULT_TRACKER_PATH = Path(__file__).with_name("distance-resolution-v1.csv")
 DEFAULT_OUTPUT_DIR = Path("downloads/distance-resolution-v1")
 VIZIER_TAP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap"
 STARHORSE_TABLE = '"I/354/starhorse2021"'

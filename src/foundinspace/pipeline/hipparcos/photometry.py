@@ -69,9 +69,3 @@ def compute_teff_hip(df: pd.DataFrame) -> pd.DataFrame:
     flags = df.get("quality_flags", pd.Series(0, index=df.index)).astype(np.uint16)
     df["quality_flags"] = add_teff_source(flags, teff_src_bits)
     return df
-
-
-def compute_log_g_hip(df: pd.DataFrame) -> pd.DataFrame:
-    """HIP-only: log_g = NaN for all rows."""
-    df["log_g"] = np.nan
-    return df

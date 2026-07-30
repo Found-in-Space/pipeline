@@ -2,6 +2,7 @@ format_version = 1
 
 [gaia]
 input_dir = "data/catalogs/gaia-small"
+input_mode = "download-state"
 output_dir = "data/processed/gaia-small"
 calculation_engine = "dr3_ap_bj_core"
 mag_limit = 9.0
@@ -36,7 +37,9 @@ output_parquet = "data/processed/identifiers_map.parquet"
 [overrides]
 output_parquet = "data/processed/overrides.parquet"
 # data_dir = "path/to/overrides"
-# source_paths = ["path/to/override.yaml"]
+# Pin reviewed releases explicitly, for example the tracked
+# tools/curation/distance_resolution_v1/distance-resolution-v1-resolved.yaml.
+source_paths = []
 
 [merge]
 output_dir = "data/processed/merged-small"

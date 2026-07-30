@@ -8,7 +8,10 @@ from foundinspace.pipeline.constants import OUTPUT_COLS
 from foundinspace.pipeline.gaia import pipeline as gaia_pipeline
 from foundinspace.pipeline.gaia.download.fieldsets import GaiaCarryField
 from foundinspace.pipeline.gaia.engines import GaiaCalculationEngine
-from foundinspace.pipeline.gaia.pipeline import GAIA_AUXILIARY_COLS, GAIA_OUTPUT_COLS
+from foundinspace.pipeline.gaia.pipeline import (
+    GAIA_DECISION_AUX_COLS,
+    GAIA_OUTPUT_COLS,
+)
 
 TEST_ENGINE = GaiaCalculationEngine(
     name="test",
@@ -115,7 +118,7 @@ def test_run_pipeline_batch_emits_output_cols_plus_auxiliary(monkeypatch):
     assert list(out.columns) == GAIA_OUTPUT_COLS
     for col in OUTPUT_COLS:
         assert col in out.columns
-    for col in GAIA_AUXILIARY_COLS:
+    for col in GAIA_DECISION_AUX_COLS:
         assert col in out.columns
     assert (out["source"] == "gaia").all()
     assert out["source_id"].dtype == "uint64"

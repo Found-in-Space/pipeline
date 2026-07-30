@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,8 @@ from foundinspace.pipeline.project import (
     PROJECT_PROFILES,
     load_project,
     render_project_template,
+    render_run_project_template,
+    validate_controlled_project,
 )
 from foundinspace.pipeline.project_cli import cli as project_cli
 
@@ -495,6 +498,7 @@ def test_render_project_template_is_valid_toml_with_all_sections() -> None:
     assert parsed["format_version"] == FORMAT_VERSION
 
     assert "output_dir" in parsed["gaia"]
+    assert parsed["gaia"]["input_mode"] == "download-state"
     assert parsed["gaia"]["calculation_engine"] == DEFAULT_GAIA_CALCULATION_ENGINE
     assert "mag_limit" not in parsed["gaia"]
 
@@ -510,6 +514,7 @@ def test_render_project_template_is_valid_toml_with_all_sections() -> None:
     assert "output_parquet" in parsed["identifiers"]
 
     assert "output_parquet" in parsed["overrides"]
+    assert parsed["overrides"]["source_paths"] == []
 
     assert "output_dir" in parsed["merge"]
     assert parsed["merge"]["healpix_order"] == 3
@@ -575,3 +580,286 @@ def test_project_init_writes_selected_profile(tmp_path: Path, profile: str) -> N
     assert project_path.read_text(encoding="utf-8") == render_project_template(profile)
     project = load_project(project_path)
     assert project.project_path == project_path.resolve()
+
+
+def test_render_run_project_template_adds_controlled_run_metadata() -> None:
+    parsed = tomllib.loads(
+        render_run_project_template(run_id="stars-20260730-a1b2c3", profile="full")
+    )
+
+    assert parsed["format_version"] == FORMAT_VERSION
+    assert parsed["run"] == {
+        "id": "stars-20260730-a1b2c3",
+        "provenance_dir": "provenance",
+    }
+
+
+def test_project_init_run_creates_named_run_and_refuses_overwrite(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    run_dir = tmp_path / "stars-20260730-a1b2c3"
+
+    result = runner.invoke(
+        project_cli,
+        ["init-run", "--profile", "small", str(run_dir)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (run_dir / "RUN_ID").read_text(encoding="utf-8") == (
+        "stars-20260730-a1b2c3\n"
+    )
+    assert (run_dir / "provenance").is_dir()
+    project = load_project(run_dir / "pipeline.toml")
+    assert project.run.id == run_dir.name
+    assert project.run.provenance_dir == run_dir / "provenance"
+    validate_controlled_project(project)
+
+    repeated = runner.invoke(
+        project_cli,
+        ["init-run", "--profile", "small", str(run_dir)],
+    )
+    assert repeated.exit_code != 0
+    assert "already exists" in repeated.output
+
+
+def test_controlled_validation_requires_explicit_gaia_and_override_inputs(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run-1"
+    run_dir.mkdir()
+    project_path = run_dir / "pipeline.toml"
+    project_path.write_text(
+        _project_text().replace(
+            "format_version = 1",
+            'format_version = 1\n\n[run]\nid = "run-1"',
+        )
+        + '\n[gaia_download]\nmode = "full"\nstate_db = "download.sqlite"\n',
+        encoding="utf-8",
+    )
+    project = load_project(project_path)
+
+    with pytest.raises(ValueError, match="gaia.input_mode"):
+        validate_controlled_project(project)
+
+    with_explicit_gaia = project_path.read_text(encoding="utf-8").replace(
+        '[gaia]\noutput_dir = "data/processed/gaia"',
+        '[gaia]\ninput_mode = "directory"\n'
+        'input_dir = "data/catalogs/gaia"\n'
+        'output_dir = "data/processed/gaia"',
+    )
+    project_path.write_text(
+        with_explicit_gaia,
+        encoding="utf-8",
+    )
+    project = load_project(project_path)
+
+    with pytest.raises(ValueError, match="overrides.source_paths"):
+        validate_controlled_project(project)
+
+    project_path.write_text(
+        with_explicit_gaia.replace(
+            '[overrides]\noutput_parquet = "data/processed/overrides.parquet"',
+            '[overrides]\noutput_parquet = "data/processed/overrides.parquet"\n'
+            "source_paths = []",
+        ),
+        encoding="utf-8",
+    )
+    validate_controlled_project(load_project(project_path))
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (
+            'calculation_engine = "dr3_ap_bj_core"',
+            'calculation_engine = "unknown"',
+            "gaia.calculation_engine",
+        ),
+        (
+            'input_mode = "download-state"',
+            'input_mode = "unknown"',
+            "gaia.input_mode",
+        ),
+        ('mode = "small"', 'mode = "unknown"', "gaia_download.mode"),
+        ('access = "auto"', 'access = "unknown"', "gaia_download.access"),
+        (
+            "row_cap = 55000000",
+            "row_cap = 0",
+            "gaia_download.row_cap",
+        ),
+        (
+            "max_active_jobs = 4",
+            "max_active_jobs = 0",
+            "gaia_download.max_active_jobs",
+        ),
+        (
+            "max_active_jobs = 4",
+            "max_active_jobs = 4\nremote_min_free_bytes = -1",
+            "gaia_download.remote_min_free_bytes",
+        ),
+        (
+            "remote_result_bytes_per_row = 400",
+            "remote_result_bytes_per_row = 0",
+            "gaia_download.remote_result_bytes_per_row",
+        ),
+        (
+            "remote_max_result_bytes_per_job = 5000000000",
+            "remote_max_result_bytes_per_job = 0",
+            "gaia_download.remote_max_result_bytes_per_job",
+        ),
+        (
+            "carry_field_sets = []",
+            'carry_field_sets = ["not_installed"]',
+            "Gaia field set not found",
+        ),
+        (
+            "source_paths = []",
+            "source_paths = [1]",
+            "overrides.source_paths",
+        ),
+        (
+            '# supplemental_parquets = ["path/to/pre_resolved_gaia_hip_map.parquet"]',
+            "supplemental_parquets = [1]",
+            "gaia-to-hip.supplemental_parquets",
+        ),
+        ("healpix_order = 3", "healpix_order = -1", "merge.healpix_order"),
+    ],
+)
+def test_controlled_validation_checks_every_configured_setting(
+    tmp_path: Path,
+    old: str,
+    new: str,
+    message: str,
+) -> None:
+    run_dir = tmp_path / "run-settings"
+    run_dir.mkdir()
+    project_path = run_dir / "pipeline.toml"
+    project_path.write_text(
+        render_run_project_template(run_id=run_dir.name, profile="small").replace(
+            old,
+            new,
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises((OSError, ValueError), match=message):
+        validate_controlled_project(load_project(project_path))
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (
+            "mag_limit = 9.0",
+            "mag_limit = 8.0",
+            "gaia.mag_limit must match",
+        ),
+        (
+            "remote_result_bytes_per_row = 400",
+            "remote_result_bytes_per_row = 6000000000",
+            "remote_max_result_bytes_per_job",
+        ),
+    ],
+)
+def test_controlled_validation_checks_cross_setting_limits(
+    tmp_path: Path,
+    old: str,
+    new: str,
+    message: str,
+) -> None:
+    run_dir = tmp_path / "run-limits"
+    run_dir.mkdir()
+    project_path = run_dir / "pipeline.toml"
+    project_path.write_text(
+        render_run_project_template(run_id=run_dir.name, profile="small").replace(
+            old,
+            new,
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        validate_controlled_project(load_project(project_path))
+
+
+def test_project_validate_records_controlled_configuration(tmp_path: Path) -> None:
+    runner = CliRunner()
+    run_dir = tmp_path / "run-validated"
+    created = runner.invoke(project_cli, ["init-run", str(run_dir)])
+    assert created.exit_code == 0, created.output
+
+    result = runner.invoke(
+        project_cli,
+        ["validate", "--project", str(run_dir / "pipeline.toml")],
+    )
+
+    assert result.exit_code == 0, result.output
+    event_paths = list((run_dir / "provenance").glob("*.json"))
+    assert len(event_paths) == 1
+    event = json.loads(event_paths[0].read_text(encoding="utf-8"))
+    assert event["command"] == "project validate"
+    assert event["status"] == "succeeded"
+    assert event["project"]["resolved_paths"]["gaia.input_dir"].endswith(
+        "/data/catalogs/gaia"
+    )
+
+
+def test_project_validate_reports_malformed_run_metadata_without_event(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    run_dir = tmp_path / "run-invalid"
+    run_dir.mkdir()
+    provenance_dir = run_dir / "provenance"
+    provenance_dir.mkdir()
+    project_path = run_dir / "pipeline.toml"
+    project_path.write_text(
+        render_run_project_template(run_id=run_dir.name).replace(
+            'id = "run-invalid"',
+            'id = "../invalid"',
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        project_cli,
+        ["validate", "--project", str(project_path)],
+    )
+
+    assert result.exit_code != 0
+    assert "Error: run.id must start with an alphanumeric" in result.output
+    assert "Traceback" not in result.output
+    assert not list(provenance_dir.iterdir())
+
+
+def test_project_validate_records_non_run_validation_failure(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    run_dir = tmp_path / "run-invalid-engine"
+    run_dir.mkdir()
+    provenance_dir = run_dir / "provenance"
+    provenance_dir.mkdir()
+    project_path = run_dir / "pipeline.toml"
+    project_path.write_text(
+        render_run_project_template(run_id=run_dir.name).replace(
+            'calculation_engine = "dr3_ap_bj_core"',
+            'calculation_engine = "invalid"',
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        project_cli,
+        ["validate", "--project", str(project_path)],
+    )
+
+    assert result.exit_code != 0
+    assert "gaia.calculation_engine" in result.output
+    event_path = next(provenance_dir.glob("*.json"))
+    event = json.loads(event_path.read_text(encoding="utf-8"))
+    assert event["status"] == "failed"
+    assert event["error"]["type"] == "ClickException"

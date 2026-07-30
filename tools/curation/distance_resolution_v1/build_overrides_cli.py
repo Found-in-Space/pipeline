@@ -9,10 +9,10 @@ from pathlib import Path
 
 import yaml
 
-from foundinspace.pipeline.overrides.distance_research import DEFAULT_TRACKER_PATH
-from foundinspace.pipeline.overrides.override_promotion import (
+from tools.curation.distance_resolution_v1.promotion import (
     DEFAULT_PREFLIGHT_DIR,
     DEFAULT_RESOLVED_OVERRIDE_PATH,
+    DEFAULT_TRACKER_PATH,
     build_resolved_distance_override_document,
     validate_resolved_override_against_tracker,
     write_resolved_distance_override_yaml,

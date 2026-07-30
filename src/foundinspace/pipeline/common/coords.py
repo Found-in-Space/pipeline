@@ -2,70 +2,11 @@
 
 import numpy as np
 import pandas as pd
-from astropy import units as u
-from astropy.coordinates import SkyCoord
-from astropy.time import Time
 
 from foundinspace.pipeline.constants import CANONICAL_EPOCH_JYEAR
 
 # 1 mas = pi / (180 * 3600 * 1000) rad
 MAS_TO_RAD = np.pi / (180.0 * 3_600_000.0)
-
-
-def calculate_coordinates(df: pd.DataFrame) -> pd.DataFrame:
-    """Propagate all positions to J2016.0 and compute Cartesian coordinates.
-
-    Uses distance_use_pc directly (no parallax round-trip for Bailer-Jones rows).
-    Applies SkyCoord.apply_space_motion() to advance positions from each row's
-    source epoch to the canonical epoch J2016.0.
-
-    Columns added:
-        x_icrs_pc, y_icrs_pc, z_icrs_pc   : Cartesian ICRS (pc)
-        ra_deg                            : RA at J2016.0 (deg)
-        dec_deg                           : Dec at J2016.0 (deg)
-        r_pc                              : distance (pc) at J2016.0
-        epoch_norm_yr                     : canonical epoch (always 2016.0)
-
-    Args:
-        df: Prepared catalog rows with ra_use_deg, dec_use_deg, distance_use_pc,
-            pmra_use_masyr, pmdec_use_masyr, and epoch_yr.
-
-    Returns:
-        New DataFrame with coordinate columns added.
-    """
-    canonical_epoch = Time(CANONICAL_EPOCH_JYEAR, format="jyear")
-
-    # Missing proper motion must not erase a valid catalog position. This is
-    # especially important for rows already at J2016.0, where no propagation
-    # is needed. For earlier epochs, zero is the conservative static-position
-    # fallback when the catalog provides no motion.
-    pmra = df["pmra_use_masyr"].astype(float).to_numpy()
-    pmdec = df["pmdec_use_masyr"].astype(float).to_numpy()
-    pmra = np.where(np.isfinite(pmra), pmra, 0.0)
-    pmdec = np.where(np.isfinite(pmdec), pmdec, 0.0)
-
-    c = SkyCoord(
-        ra=df["ra_use_deg"].astype(float).to_numpy() * u.deg,
-        dec=df["dec_use_deg"].astype(float).to_numpy() * u.deg,
-        distance=df["distance_use_pc"].astype(float).to_numpy() * u.pc,
-        pm_ra_cosdec=pmra * u.mas / u.yr,
-        pm_dec=pmdec * u.mas / u.yr,
-        obstime=Time(df["epoch_yr"].astype(float).to_numpy(), format="jyear"),
-        frame="icrs",
-    )
-    c2016 = c.apply_space_motion(new_obstime=canonical_epoch)
-
-    cart = c2016.cartesian
-    df["x_icrs_pc"] = cart.x.to_value(u.pc)
-    df["y_icrs_pc"] = cart.y.to_value(u.pc)
-    df["z_icrs_pc"] = cart.z.to_value(u.pc)
-    df["epoch_norm_yr"] = CANONICAL_EPOCH_JYEAR
-
-    df["ra_deg"] = c2016.ra.to_value(u.deg)
-    df["dec_deg"] = c2016.dec.to_value(u.deg)
-    df["r_pc"] = c2016.distance.to_value(u.pc)
-
-    return df
 
 
 def calculate_coordinates_fast(df: pd.DataFrame) -> pd.DataFrame:

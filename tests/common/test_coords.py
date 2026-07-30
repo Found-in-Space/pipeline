@@ -1,17 +1,41 @@
-"""Tests for coordinate propagation (coords module).
-
-In particular, we check that calculate_coordinates (Astropy SkyCoord) and
-calculate_coordinates_fast (pure NumPy) agree to within numerical tolerance.
-"""
+"""Compare production coordinate propagation with an Astropy test oracle."""
 
 import numpy as np
 import pandas as pd
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.time import Time
 
-from foundinspace.pipeline.common.coords import (
-    calculate_coordinates,
-    calculate_coordinates_fast,
-)
+from foundinspace.pipeline.common.coords import calculate_coordinates_fast
 from foundinspace.pipeline.constants import CANONICAL_EPOCH_JYEAR
+
+
+def calculate_coordinates_reference(df: pd.DataFrame) -> pd.DataFrame:
+    """Astropy oracle for the production NumPy coordinate implementation."""
+    canonical_epoch = Time(CANONICAL_EPOCH_JYEAR, format="jyear")
+    pmra = df["pmra_use_masyr"].astype(float).to_numpy()
+    pmdec = df["pmdec_use_masyr"].astype(float).to_numpy()
+    pmra = np.where(np.isfinite(pmra), pmra, 0.0)
+    pmdec = np.where(np.isfinite(pmdec), pmdec, 0.0)
+    coordinates = SkyCoord(
+        ra=df["ra_use_deg"].astype(float).to_numpy() * u.deg,
+        dec=df["dec_use_deg"].astype(float).to_numpy() * u.deg,
+        distance=df["distance_use_pc"].astype(float).to_numpy() * u.pc,
+        pm_ra_cosdec=pmra * u.mas / u.yr,
+        pm_dec=pmdec * u.mas / u.yr,
+        obstime=Time(df["epoch_yr"].astype(float).to_numpy(), format="jyear"),
+        frame="icrs",
+    )
+    propagated = coordinates.apply_space_motion(new_obstime=canonical_epoch)
+    cartesian = propagated.cartesian
+    df["x_icrs_pc"] = cartesian.x.to_value(u.pc)
+    df["y_icrs_pc"] = cartesian.y.to_value(u.pc)
+    df["z_icrs_pc"] = cartesian.z.to_value(u.pc)
+    df["epoch_norm_yr"] = CANONICAL_EPOCH_JYEAR
+    df["ra_deg"] = propagated.ra.to_value(u.deg)
+    df["dec_deg"] = propagated.dec.to_value(u.deg)
+    df["r_pc"] = propagated.distance.to_value(u.pc)
+    return df
 
 
 def _make_coords_df(
@@ -19,7 +43,7 @@ def _make_coords_df(
     *,
     seed: int | None = 42,
 ) -> pd.DataFrame:
-    """Build a DataFrame with columns required by calculate_coordinates*."""
+    """Build a DataFrame with columns required by coordinate propagation."""
     rng = np.random.default_rng(seed)
     return pd.DataFrame(
         {
@@ -48,7 +72,7 @@ COORD_OUTPUT_COLS = [
 def test_astropy_and_fast_agree_on_random_input():
     """Both approaches produce the same Cartesian and spherical coordinates."""
     df = _make_coords_df(n=20, seed=123)
-    df_astropy = calculate_coordinates(df.copy())
+    df_astropy = calculate_coordinates_reference(df.copy())
     df_fast = calculate_coordinates_fast(df.copy())
 
     # Slightly relaxed tolerance: two different code paths can differ at ~1e-8
@@ -61,7 +85,7 @@ def test_astropy_and_fast_agree_on_random_input():
 def test_astropy_and_fast_agree_single_row():
     """Single-row case: both methods match."""
     df = _make_coords_df(n=1, seed=0)
-    df_astropy = calculate_coordinates(df.copy())
+    df_astropy = calculate_coordinates_reference(df.copy())
     df_fast = calculate_coordinates_fast(df.copy())
 
     for col in COORD_OUTPUT_COLS:
@@ -78,7 +102,7 @@ def test_astropy_and_fast_agree_zero_pm():
     # Same epoch as canonical so dt=0
     df["epoch_yr"] = CANONICAL_EPOCH_JYEAR
 
-    df_astropy = calculate_coordinates(df.copy())
+    df_astropy = calculate_coordinates_reference(df.copy())
     df_fast = calculate_coordinates_fast(df.copy())
 
     for col in COORD_OUTPUT_COLS:
@@ -95,7 +119,7 @@ def test_astropy_and_fast_agree_zero_pm():
 def test_epoch_norm_yr_is_canonical():
     """Both functions set epoch_norm_yr to the canonical epoch."""
     df = _make_coords_df(n=3)
-    out1 = calculate_coordinates(df.copy())
+    out1 = calculate_coordinates_reference(df.copy())
     out2 = calculate_coordinates_fast(df.copy())
     assert (out1["epoch_norm_yr"] == CANONICAL_EPOCH_JYEAR).all()
     assert (out2["epoch_norm_yr"] == CANONICAL_EPOCH_JYEAR).all()
@@ -104,10 +128,10 @@ def test_epoch_norm_yr_is_canonical():
 def test_output_columns_present():
     """Both functions add the expected columns."""
     df = _make_coords_df(n=2)
-    out1 = calculate_coordinates(df.copy())
+    out1 = calculate_coordinates_reference(df.copy())
     out2 = calculate_coordinates_fast(df.copy())
     for col in COORD_OUTPUT_COLS:
-        assert col in out1, f"calculate_coordinates missing {col}"
+        assert col in out1, f"reference implementation missing {col}"
         assert col in out2, f"calculate_coordinates_fast missing {col}"
 
 
@@ -117,7 +141,7 @@ def test_missing_proper_motion_preserves_position_at_canonical_epoch():
     df["pmra_use_masyr"] = np.nan
     df["pmdec_use_masyr"] = np.nan
 
-    out_astropy = calculate_coordinates(df.copy())
+    out_astropy = calculate_coordinates_reference(df.copy())
     out_fast = calculate_coordinates_fast(df.copy())
 
     for out in (out_astropy, out_fast):

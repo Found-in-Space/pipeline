@@ -69,7 +69,7 @@ Manual overrides have highest precedence:
 - `replace` substitutes curated physical data and suppresses the partner row;
 - `add` inserts a manual row.
 
-The packaged default override set is empty. Controlled projects select every
+The runtime default override set is empty. Controlled projects select every
 custom override YAML explicitly; each source must be pinned and captured in the
 publication provenance. Review targets and Gaia–Hipparcos pairing candidates
 remain evidence inputs until a project selects a reviewed override source.
@@ -81,24 +81,24 @@ catalog publication and are not merged automatically. See
 `docs/sun-reference-policy.md`.
 
 Distance exceptions researched outside the automatic policy are tracked in
-`src/foundinspace/pipeline/overrides/research/distance-resolution-v1.csv`.
+`tools/curation/distance_resolution_v1/distance-resolution-v1.csv`.
 Its 81 rows are deliberately non-executable: each records the exact Gaia/HIP
 identity, current fallback, reason for research, selected distance and
 uncertainty, durable reference, and any remaining caveat without changing a
 build. `resolved` rows are ready for explicit override review; `provisional`
 rows preserve the best current evidence but are not ready for automatic
 promotion.
-`scripts/research_override_distances.py` collects SIMBAD measurements and
-bibcodes, Gaia DR3 astrometry and Bailer-Jones intervals, and StarHorse
-photo-astrometric intervals into `downloads/distance-resolution-v1/`. Promotion
-always requires a reviewed, versioned YAML `replace` override.
+`tools.curation.distance_resolution_v1.research_cli` collects SIMBAD
+measurements and bibcodes, Gaia DR3 astrometry and Bailer-Jones intervals, and
+StarHorse photo-astrometric intervals into `downloads/distance-resolution-v1/`.
+Promotion always requires a reviewed, versioned YAML `replace` override.
 
 The 48 currently resolved rows are materialized as the explicit custom source
-`src/foundinspace/pipeline/overrides/research/distance-resolution-v1-resolved.yaml`.
+`tools/curation/distance_resolution_v1/distance-resolution-v1-resolved.yaml`.
 It is generated and checked against the tracker and preflight donor payloads by
-`scripts/build_distance_override_yaml.py`. It is not scanned as part of the
-empty packaged default; controlled projects must select it explicitly and record
-its checksum and pipeline commit.
+`tools.curation.distance_resolution_v1.build_overrides_cli`. It is not scanned
+by the runtime default; controlled projects must select it explicitly and
+record its checksum and pipeline commit.
 
 For automatic matched-pair decisions, Gaia wins by default. Hipparcos can win
 only when the crossmatch is unambiguous, the Hipparcos solution type is the

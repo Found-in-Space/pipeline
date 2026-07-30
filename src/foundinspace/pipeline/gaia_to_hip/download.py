@@ -7,10 +7,14 @@ from pathlib import Path
 import click
 from astropy.table import Table
 
+from foundinspace.pipeline.cli_support import (
+    load_project_or_die,
+    project_option,
+    record_command_or_die,
+)
 from foundinspace.pipeline.common.gaia_credentials import (
     login_gaia_from_environment_if_available,
 )
-from foundinspace.pipeline.project import load_project
 
 BEST_NEIGHBOUR_QUERY = """
 SELECT
@@ -75,13 +79,7 @@ def ensure_hipparcos2_best_neighbour_ecsv(
 
 
 @click.command()
-@click.option(
-    "--project",
-    "project_path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Path to pipeline project TOML.",
-)
+@project_option
 @click.option(
     "--force",
     "-f",
@@ -90,15 +88,17 @@ def ensure_hipparcos2_best_neighbour_ecsv(
     help="Re-download even if the output file already exists.",
 )
 def main(project_path: Path, force: bool) -> None:
-    try:
-        project = load_project(project_path)
-        project.require("gaia-to-hip")
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-    path = ensure_hipparcos2_best_neighbour_ecsv(
-        project.gaia_to_hip.download_ecsv,
-        force=force,
-    )
+    project = load_project_or_die(project_path, "gaia-to-hip")
+    with record_command_or_die(
+        project,
+        command="gaia-to-hip download",
+        parameters={"force": force},
+        outputs={"best_neighbour_ecsv": project.gaia_to_hip.download_ecsv},
+    ):
+        path = ensure_hipparcos2_best_neighbour_ecsv(
+            project.gaia_to_hip.download_ecsv,
+            force=force,
+        )
     row_count = len(Table.read(path, format="ascii.ecsv"))
     click.echo(
         "hipparcos2_best_neighbour catalog ready at "

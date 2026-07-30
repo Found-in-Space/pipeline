@@ -3,8 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 from astropy.table import Table
-
-from foundinspace.pipeline.overrides.distance_research import (
+from tools.curation.distance_resolution_v1.research import (
     DEFAULT_TRACKER_PATH,
     build_evidence_summary,
     build_gaia_details_query,

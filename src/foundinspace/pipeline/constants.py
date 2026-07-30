@@ -1,7 +1,5 @@
 CANONICAL_EPOCH_JYEAR = 2016.0  # Gaia DR3 reference epoch (J2016.0)
 
-EPS = 1e-12  # Epsilon for numerical stability
-
 # σ_M ≈ 2.17 * (σ_r / r) for distance-modulus uncertainty in mag
 PHOTOMETRY_QUALITY_DM_FACTOR = 2.17
 

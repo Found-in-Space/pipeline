@@ -37,7 +37,6 @@ from foundinspace.pipeline.gaia.photometry import (
 BATCH_SIZE = 1_000_000
 
 GAIA_DECISION_AUX_COLS = ["ruwe", "phot_g_mean_mag"]
-GAIA_AUXILIARY_COLS = GAIA_DECISION_AUX_COLS
 GAIA_OUTPUT_COLS = OUTPUT_COLS + GAIA_DECISION_AUX_COLS
 
 
@@ -101,11 +100,9 @@ def _run_gaia_pipeline_batch(
 
     work = select_astrometry_gaia(df)
     work = assign_photometry_gaia(work)
-    # work = filter_positional_gaia(work)
     work = calculate_coordinates_fast(work)
     work = compute_mag_abs_gaia(work)
     work = compute_teff_gaia(work)
-    # work = compute_log_g_gaia(work)
     work["source"] = "gaia"
     work["source_id"] = work["source_id"].astype("uint64")
     work = _apply_carry_fields(work, df, carry_fields)

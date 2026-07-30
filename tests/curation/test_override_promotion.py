@@ -2,16 +2,16 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-
-from foundinspace.pipeline.overrides.distance_research import (
-    DEFAULT_TRACKER_PATH,
-    load_distance_tracker,
-)
-from foundinspace.pipeline.overrides.override_promotion import (
+from tools.curation.distance_resolution_v1.promotion import (
     DEFAULT_RESOLVED_OVERRIDE_PATH,
     build_resolved_distance_override_document,
     validate_resolved_override_against_tracker,
 )
+from tools.curation.distance_resolution_v1.research import (
+    DEFAULT_TRACKER_PATH,
+    load_distance_tracker,
+)
+
 from foundinspace.pipeline.overrides.pipeline import build_overrides_dataframe
 
 

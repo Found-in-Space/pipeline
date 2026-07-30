@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
@@ -15,18 +16,16 @@ from foundinspace.pipeline.gaia.engines import (
 
 FORMAT_VERSION = 1
 PROJECT_PROFILES = ("full", "small")
+GAIA_INPUT_MODES = ("download-state", "directory")
 
-_SECTION_NAMES = {
-    "gaia",
-    "gaia-to-hip",
-    "hip",
-    "identifiers",
-    "overrides",
-    "merge",
-    "gaia_download",
+_RUN_KEYS = {"id", "provenance_dir"}
+_GAIA_KEYS = {
+    "input_dir",
+    "input_mode",
+    "output_dir",
+    "mag_limit",
+    "calculation_engine",
 }
-
-_GAIA_KEYS = {"input_dir", "output_dir", "mag_limit", "calculation_engine"}
 _GAIA_DOWNLOAD_KEYS = {
     "mode",
     "access",
@@ -52,6 +51,7 @@ _IDENTIFIERS_KEYS = {
 _OVERRIDES_KEYS = {"output_parquet", "data_dir", "source_paths"}
 _MERGE_KEYS = {"output_dir", "healpix_order", "sidecar_output_dir"}
 _DIST_NAME = "found-in-space-pipeline"
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 GAIA_DOWNLOAD_MODES = ("small", "full")
 GAIA_DOWNLOAD_ACCESS_MODES = ("auto", "anonymous", "authenticated")
@@ -259,6 +259,17 @@ class GaiaConfig(_SectionAccessor):
         return self._require_path("output_dir")
 
     @property
+    def input_mode(self) -> str | None:
+        value = self._optional_str_field("input_mode")
+        if value is None:
+            return None
+        return _normalize_choice(
+            value,
+            choices=GAIA_INPUT_MODES,
+            field_name="gaia.input_mode",
+        )
+
+    @property
     def mag_limit(self) -> float | None:
         return self._optional_float_field("mag_limit")
 
@@ -450,9 +461,31 @@ class MergeConfig(_SectionAccessor):
         return self.output_dir.parent / "sidecars"
 
 
+class RunConfig(_SectionAccessor):
+    @property
+    def id(self) -> str:
+        if self._raw is None:
+            raise ValueError("Missing [run] table in project file")
+        value = _require_str(self._raw, "id", field_name="run.id")
+        if not _RUN_ID_RE.fullmatch(value):
+            raise ValueError(
+                "run.id must start with an alphanumeric character and contain "
+                "only letters, numbers, '.', '_' or '-'"
+            )
+        return value
+
+    @property
+    def provenance_dir(self) -> Path:
+        explicit = self._optional_path("provenance_dir")
+        if explicit is not None:
+            return explicit
+        return self._project_dir / "provenance"
+
+
 @dataclass(frozen=True, slots=True)
 class PipelineProject:
     project_path: Path
+    run: RunConfig
     gaia: GaiaConfig
     gaia_download: GaiaDownloadConfig
     gaia_to_hip: GaiaToHipConfig
@@ -464,6 +497,7 @@ class PipelineProject:
     def require(self, *section_names: str) -> None:
         """Raise ValueError listing all missing required sections at once."""
         known: dict[str, _SectionAccessor] = {
+            self.run._section: self.run,
             self.gaia._section: self.gaia,
             self.gaia_download._section: self.gaia_download,
             self.gaia_to_hip._section: self.gaia_to_hip,
@@ -483,6 +517,170 @@ class PipelineProject:
                 "Missing required config sections: "
                 + ", ".join(f"[{name}]" for name in missing)
             )
+
+    def resolved_paths(self) -> dict[str, str | list[str]]:
+        """Return every configured filesystem path using stable config labels."""
+        paths: dict[str, str | list[str]] = {}
+
+        def add(section: _SectionAccessor, key: str, value: Path) -> None:
+            if section.is_configured:
+                paths[f"{section._section}.{key}"] = str(value.resolve())
+
+        if self.run.is_configured:
+            add(self.run, "provenance_dir", self.run.provenance_dir)
+        if self.gaia.is_configured:
+            add(self.gaia, "input_dir", self.gaia.input_dir)
+            add(self.gaia, "output_dir", self.gaia.output_dir)
+        if self.gaia_download.is_configured:
+            add(self.gaia_download, "state_db", self.gaia_download.state_db)
+        if self.gaia_to_hip.is_configured:
+            add(self.gaia_to_hip, "download_ecsv", self.gaia_to_hip.download_ecsv)
+            add(self.gaia_to_hip, "output_parquet", self.gaia_to_hip.output_parquet)
+            paths["gaia-to-hip.supplemental_parquets"] = [
+                str(path.resolve()) for path in self.gaia_to_hip.supplemental_parquets
+            ]
+        if self.hip.is_configured:
+            add(self.hip, "download_ecsv", self.hip.download_ecsv)
+            add(self.hip, "output_parquet", self.hip.output_parquet)
+        if self.identifiers.is_configured:
+            add(self.identifiers, "hip_hd_ecsv", self.identifiers.hip_hd_ecsv)
+            add(
+                self.identifiers,
+                "iv27a_catalog_ecsv",
+                self.identifiers.iv27a_catalog_ecsv,
+            )
+            add(
+                self.identifiers,
+                "iv27a_proper_names_ecsv",
+                self.identifiers.iv27a_proper_names_ecsv,
+            )
+            add(
+                self.identifiers,
+                "output_parquet",
+                self.identifiers.output_parquet,
+            )
+        if self.overrides.is_configured:
+            add(self.overrides, "output_parquet", self.overrides.output_parquet)
+            if self.overrides.data_dir is not None:
+                add(self.overrides, "data_dir", self.overrides.data_dir)
+            if self.overrides.source_paths is not None:
+                paths["overrides.source_paths"] = [
+                    str(path.resolve()) for path in self.overrides.source_paths
+                ]
+        if self.merge.is_configured:
+            add(self.merge, "output_dir", self.merge.output_dir)
+            add(self.merge, "sidecar_output_dir", self.merge.sidecar_output_dir)
+        return paths
+
+
+CONTROLLED_SECTIONS = (
+    "run",
+    "gaia",
+    "gaia_download",
+    "gaia-to-hip",
+    "hip",
+    "identifiers",
+    "overrides",
+    "merge",
+)
+
+
+def validate_controlled_project(project: PipelineProject) -> None:
+    """Validate the explicit configuration required for a traceable full run."""
+    project.require(*CONTROLLED_SECTIONS)
+    run_id = project.run.id
+    _ = project.run.provenance_dir
+    if project.project_path.name != "pipeline.toml":
+        raise ValueError("Controlled project file must be named pipeline.toml")
+    if project.project_path.parent.name != run_id:
+        raise ValueError(
+            "run.id must match the directory containing pipeline.toml: "
+            f"{run_id!r} != {project.project_path.parent.name!r}"
+        )
+
+    gaia_input_mode = project.gaia.input_mode
+    gaia_mag_limit = project.gaia.mag_limit
+    if gaia_input_mode is None:
+        raise ValueError(
+            "Controlled projects must set gaia.input_mode to "
+            "'download-state' or 'directory'"
+        )
+    _ = (
+        project.gaia.input_dir,
+        project.gaia.output_dir,
+        project.gaia.calculation_engine,
+    )
+
+    download_mode = project.gaia_download.mode
+    download_access = project.gaia_download.access
+    download_mag_limit = project.gaia_download.mag_limit
+    remote_quota_bytes = project.gaia_download.remote_quota_bytes
+    remote_min_free_bytes = project.gaia_download.remote_min_free_bytes
+    remote_result_bytes_per_row = project.gaia_download.remote_result_bytes_per_row
+    remote_max_result_bytes_per_job = (
+        project.gaia_download.remote_max_result_bytes_per_job
+    )
+    carry_field_sets = project.gaia_download.carry_field_sets
+    _ = (
+        project.gaia_download.source_where_adql,
+        project.gaia_download.state_db,
+        project.gaia_download.row_cap,
+        project.gaia_download.max_active_jobs,
+    )
+    if download_mode == "small" and download_mag_limit is None:
+        raise ValueError("gaia_download.mag_limit is required when mode = 'small'")
+    if download_mode == "full" and download_mag_limit is not None:
+        raise ValueError("gaia_download.mag_limit must be omitted when mode = 'full'")
+    if download_mode == "full" and download_access == "anonymous":
+        raise ValueError(
+            "gaia_download.access = 'anonymous' is not valid for full mode"
+        )
+    if (
+        download_mag_limit is not None
+        and gaia_mag_limit is not None
+        and abs(gaia_mag_limit - download_mag_limit) > 1e-9
+    ):
+        raise ValueError(
+            "gaia.mag_limit must match gaia_download.mag_limit or be omitted"
+        )
+    if remote_quota_bytes <= remote_min_free_bytes:
+        raise ValueError(
+            "gaia_download.remote_quota_bytes must exceed "
+            "gaia_download.remote_min_free_bytes"
+        )
+    if remote_max_result_bytes_per_job < remote_result_bytes_per_row:
+        raise ValueError(
+            "gaia_download.remote_max_result_bytes_per_job must be at least "
+            "gaia_download.remote_result_bytes_per_row"
+        )
+
+    from foundinspace.pipeline.gaia.download.fieldsets import load_gaia_field_sets
+
+    load_gaia_field_sets(carry_field_sets)
+
+    _ = (
+        project.gaia_to_hip.download_ecsv,
+        project.gaia_to_hip.output_parquet,
+        project.gaia_to_hip.supplemental_parquets,
+        project.hip.download_ecsv,
+        project.hip.output_parquet,
+        project.identifiers.hip_hd_ecsv,
+        project.identifiers.iv27a_catalog_ecsv,
+        project.identifiers.iv27a_proper_names_ecsv,
+        project.identifiers.output_parquet,
+        project.overrides.output_parquet,
+        project.overrides.data_dir,
+        project.merge.output_dir,
+        project.merge.sidecar_output_dir,
+        project.merge.healpix_order,
+    )
+    override_sources = project.overrides.source_paths
+    if override_sources is None:
+        raise ValueError(
+            "Controlled projects must set overrides.source_paths explicitly; "
+            "use [] to select no overrides"
+        )
+    project.resolved_paths()
 
 
 def _validate_section(
@@ -515,6 +713,7 @@ def load_project(project_path: Path) -> PipelineProject:
 
     project_dir = resolved_project_path.parent
 
+    run_raw = _validate_section(raw, "run", _RUN_KEYS)
     gaia_raw = _validate_section(raw, "gaia", _GAIA_KEYS)
     gaia_download_raw = _validate_section(raw, "gaia_download", _GAIA_DOWNLOAD_KEYS)
     gaia_to_hip_raw = _validate_section(raw, "gaia-to-hip", _GAIA_TO_HIP_KEYS)
@@ -534,6 +733,7 @@ def load_project(project_path: Path) -> PipelineProject:
 
     return PipelineProject(
         project_path=resolved_project_path,
+        run=RunConfig("run", run_raw, project_dir),
         gaia=GaiaConfig("gaia", gaia_raw, project_dir),
         gaia_download=GaiaDownloadConfig(
             "gaia_download", gaia_download_raw, project_dir
@@ -574,3 +774,16 @@ def render_project_template(profile: str = "full") -> str:
             f"Unknown project profile {profile!r}; expected one of {', '.join(PROJECT_PROFILES)}"
         )
     return _profile_template_path(profile_name).read_text(encoding="utf-8")
+
+
+def render_run_project_template(*, run_id: str, profile: str = "full") -> str:
+    """Render a profile with controlled-run metadata."""
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise ValueError(
+            "run_id must start with an alphanumeric character and contain only "
+            "letters, numbers, '.', '_' or '-'"
+        )
+    rendered = render_project_template(profile=profile)
+    marker = f"format_version = {FORMAT_VERSION}\n"
+    run_table = f'\n[run]\nid = "{run_id}"\nprovenance_dir = "provenance"\n'
+    return rendered.replace(marker, marker + run_table, 1)

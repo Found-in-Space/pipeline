@@ -37,7 +37,7 @@ data/packages/<package-id>/
   README.md
   package.json
   config/
-    project.toml
+    pipeline.toml
     pyproject.toml
     uv.lock
     README.md
@@ -99,7 +99,7 @@ awk 'NR > 1 && $5 < 2 {bad++} END {exit bad ? 1 : 0}' \
 
 Every package should include:
 
-- the exact `project.toml`;
+- the exact `pipeline.toml`;
 - the pipeline `pyproject.toml` and `uv.lock`;
 - the pipeline git HEAD, dirty status, and dirty patch if the run used
   uncommitted code;

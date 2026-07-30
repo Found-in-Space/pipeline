@@ -2,13 +2,17 @@ from pathlib import Path
 
 import click
 
+from foundinspace.pipeline.cli_support import (
+    load_project_or_die,
+    project_option,
+    record_command_or_die,
+)
 from foundinspace.pipeline.gaia.download.cli import cli as download_cli
 from foundinspace.pipeline.gaia.download.fieldsets import load_gaia_field_sets
 from foundinspace.pipeline.gaia.download.runner import (
     gaia_download_input_files_for_build,
 )
 from foundinspace.pipeline.gaia.pipeline import main
-from foundinspace.pipeline.project import load_project
 
 _VOT_SUFFIXES = {".vot", ".vot.gz", ".vot.xz"}
 
@@ -21,68 +25,74 @@ def cli():
 cli.add_command(download_cli)
 
 
-def _load_project_or_die(project_path: Path, *required: str):
-    try:
-        project = load_project(project_path)
-        if required:
-            project.require(*required)
-        return project
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-
 def _is_votable(path: Path) -> bool:
     name = path.name.lower()
     return any(name.endswith(s) for s in _VOT_SUFFIXES)
 
 
 @cli.command(name="build")
-@click.option(
-    "--project",
-    "project_path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Path to pipeline project TOML.",
-)
+@project_option
 @click.option("--force", "-f", is_flag=True, default=False)
 def build_gaia(
     project_path: Path,
     force: bool = False,
 ):
-    project = _load_project_or_die(project_path, "gaia")
+    project = load_project_or_die(project_path, "gaia")
     input_dir = project.gaia.input_dir
-    if not input_dir.is_dir():
-        raise click.ClickException(f"[gaia] input_dir does not exist: {input_dir}")
-
-    try:
-        download_input_files = gaia_download_input_files_for_build(project)
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-    input_files = download_input_files
-    if input_files is None:
-        input_files = sorted(
-            p for p in input_dir.iterdir() if p.is_file() and _is_votable(p)
-        )
-    if not input_files:
-        raise click.ClickException(f"No VOTable files found in {input_dir}")
-
     output_root = project.gaia.output_dir
-    output_root.mkdir(parents=True, exist_ok=True)
-    carry_fields = ()
-    if project.gaia_download.configured:
-        carry_fields = load_gaia_field_sets(project.gaia_download.carry_field_sets)
+    inputs = {"gaia_votables": input_dir}
+    if project.gaia.input_mode == "download-state":
+        inputs["download_state"] = project.gaia_download.state_db
+    with record_command_or_die(
+        project,
+        command="gaia build",
+        parameters={
+            "force": force,
+            "input_mode": project.gaia.input_mode or "legacy-auto",
+        },
+        inputs=inputs,
+        outputs={"gaia_staged": output_root},
+    ):
+        if not input_dir.is_dir():
+            raise click.ClickException(f"[gaia] input_dir does not exist: {input_dir}")
 
-    for input_file in input_files:
-        output_name = _output_path_for(input_file)
-        output_file = output_root / output_name
-        main(
-            input_file,
-            output_file,
-            skip_if_exists=not force,
-            mag_limit=project.gaia.mag_limit,
-            carry_fields=carry_fields,
-            calculation_engine=project.gaia.calculation_engine,
-        )
+        input_mode = project.gaia.input_mode
+        download_input_files = None
+        if input_mode in {None, "download-state"}:
+            try:
+                download_input_files = gaia_download_input_files_for_build(project)
+            except ValueError as exc:
+                raise click.ClickException(str(exc)) from exc
+            if input_mode == "download-state" and download_input_files is None:
+                raise click.ClickException(
+                    "gaia.input_mode is 'download-state', but the configured "
+                    "[gaia_download] state_db is missing or contains no batches"
+                )
+
+        input_files = download_input_files
+        if input_files is None:
+            input_files = sorted(
+                p for p in input_dir.iterdir() if p.is_file() and _is_votable(p)
+            )
+        if not input_files:
+            raise click.ClickException(f"No VOTable files found in {input_dir}")
+
+        output_root.mkdir(parents=True, exist_ok=True)
+        carry_fields = ()
+        if project.gaia_download.configured:
+            carry_fields = load_gaia_field_sets(project.gaia_download.carry_field_sets)
+
+        for input_file in input_files:
+            output_name = _output_path_for(input_file)
+            output_file = output_root / output_name
+            main(
+                input_file,
+                output_file,
+                skip_if_exists=not force,
+                mag_limit=project.gaia.mag_limit,
+                carry_fields=carry_fields,
+                calculation_engine=project.gaia.calculation_engine,
+            )
 
 
 def _output_path_for(input_path: Path) -> str:

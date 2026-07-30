@@ -30,7 +30,6 @@ from foundinspace.pipeline.gaia.download.fieldsets import (
     fields_by_sidecar,
     load_gaia_field_sets,
 )
-from foundinspace.pipeline.merge import sidecars
 from foundinspace.pipeline.merge.overrides import OVERRIDE_REQUIRED_COLS
 from foundinspace.pipeline.merge.pipeline import run_merge
 from foundinspace.pipeline.merge.policy import (
@@ -544,16 +543,16 @@ def test_run_merge_writes_gaia_enrichment_sidecars_for_hip_winner(tmp_path: Path
     assert mass_df.loc[0, "bc_flame"] == pytest.approx(-0.07)
 
 
-def test_derived_sidecar_maps_cover_configured_gaia_field_sets() -> None:
+def test_field_declarations_define_sidecar_output_schemas() -> None:
     fields = load_gaia_field_sets(("motion", "mass", "mass_spec"))
     grouped = fields_by_sidecar(fields)
 
-    assert {field.output_column for field in grouped["motion"]} <= set(
-        sidecars._MOTION_COLUMN_MAP
-    )
-    assert {field.output_column for field in grouped["mass"]} <= set(
-        sidecars._MASS_COLUMN_MAP
-    )
+    motion_outputs = [field.sidecar_output_column for field in grouped["motion"]]
+    mass_outputs = [field.sidecar_output_column for field in grouped["mass"]]
+    assert len(motion_outputs) == len(set(motion_outputs))
+    assert len(mass_outputs) == len(set(mass_outputs))
+    pm_total = next(field for field in grouped["motion"] if field.name == "pm_masyr")
+    assert pm_total.sidecar_output_column == "pm_total_masyr"
 
 
 # ---------------------------------------------------------------------------

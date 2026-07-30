@@ -18,6 +18,11 @@ from tqdm.auto import tqdm
 
 from foundinspace.pipeline.common.ids import normalize_compound_key
 from foundinspace.pipeline.constants import OUTPUT_COLS
+from foundinspace.pipeline.gaia.download.fieldsets import (
+    GaiaCarryField,
+    gaia_enrichment_columns,
+    infer_builtin_gaia_fields,
+)
 from foundinspace.pipeline.merge import policy, shards, sidecars
 from foundinspace.pipeline.merge.decisions import DECISION_COLS, decision_record
 from foundinspace.pipeline.merge.overrides import (
@@ -142,6 +147,7 @@ def run_merge(
     overrides_path: Path,
     output_dir: Path,
     sidecar_output_dir: Path | None = None,
+    carry_fields: tuple[GaiaCarryField, ...] | None = None,
     healpix_order: int = 3,
     force: bool = False,
 ) -> MergeReport:
@@ -277,7 +283,14 @@ def run_merge(
         parquet_file = pq.ParquetFile(gaia_file)
         schema_names = parquet_file.schema_arrow.names
         file_col_names = set(schema_names)
-        enrichment_cols = sidecars.gaia_enrichment_columns(schema_names)
+        file_carry_fields = (
+            infer_builtin_gaia_fields(schema_names)
+            if carry_fields is None
+            else tuple(
+                field for field in carry_fields if field.output_column in schema_names
+            )
+        )
+        enrichment_cols = gaia_enrichment_columns(file_carry_fields)
         gaia_read_cols = list(
             dict.fromkeys(
                 OUTPUT_COLS
@@ -329,6 +342,7 @@ def run_merge(
                     )
                     sidecars.write_gaia_sidecars(
                         sidecar_df,
+                        carry_fields=file_carry_fields,
                         hp=hp,
                         sidecar_root=sidecar_root,
                         phase_tag=f"gaia_{gaia_file.stem}",
@@ -512,6 +526,7 @@ def run_merge(
                 )
                 sidecars.write_gaia_sidecars(
                     sidecar_df,
+                    carry_fields=file_carry_fields,
                     hp=hp,
                     sidecar_root=sidecar_root,
                     phase_tag=f"gaia_special_{gaia_file.stem}",

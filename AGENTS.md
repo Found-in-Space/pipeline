@@ -5,6 +5,15 @@
 - Use `uv` for all Python dependency and environment operations in this repository.
 - Do not use `pip`, `poetry`, or `conda` commands directly.
 
+### Cache placement
+
+- Set `UV_CACHE_DIR` to a repository-local directory, such as `.cache/uv`, for
+  every `uv` invocation.
+- Do not use the default user cache or a system temporary directory: either may
+  be on a different filesystem and force expensive cross-filesystem copies.
+- If the repository path is a symlink, keeping the cache inside the worktree
+  ensures it follows the filesystem containing the repository data.
+
 ### Standard commands
 
 - Sync/install dependencies: `uv sync`
@@ -19,7 +28,8 @@
 - Install git hooks once: `uv run pre-commit install`
 - Run on all files: `uv run pre-commit run --all-files`
 
-Hooks: `ruff-check` (lint + fix) and `ruff-format`, scoped to `src/` and `tests/`.
+Hooks: `ruff-check` (lint + fix) and `ruff-format`, scoped to `src/`, `tests/`,
+and `tools/`.
 
 ### Examples
 

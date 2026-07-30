@@ -29,10 +29,6 @@ from foundinspace.pipeline.constants import (
 _TEFF_VALID_LO = 2000.0
 _TEFF_VALID_HI = 50000.0
 
-# Surface gravity bounds for Gaia logg (dex). Covers supergiants to white dwarfs.
-_LOGG_VALID_LO = 0.0
-_LOGG_VALID_HI = 9.0
-
 _BP_RP_VALID_LO = -0.5
 _BP_RP_VALID_HI = 3.5
 
@@ -161,71 +157,6 @@ def compute_teff_gaia(work: pd.DataFrame) -> pd.DataFrame:
     teff_src_vals = np.asarray(teff_src_vals, dtype=np.uint16)
     flags = work["quality_flags"].astype(np.uint16).to_numpy()
     work["quality_flags"] = add_teff_source(flags, teff_src_vals)
-
-    return work
-
-
-def compute_log_g_gaia(work: pd.DataFrame) -> pd.DataFrame:
-    """Derive surface gravity (log g, dex) from Gaia astrophysical parameters.
-
-    Cascade (first valid wins):
-    1. logg_esphs (ESP-HS)
-    2. logg_gspspec (GSP-Spec)
-    3. logg_gspphot (GSP-Phot)
-
-    Valid range: 0–9 dex (supergiants to white dwarfs).
-    Missing or invalid values → NaN.
-
-    Columns added:
-        log_g: surface gravity in dex
-
-    Args:
-        work: Working DataFrame (must have Gaia logg columns as available).
-
-    Returns:
-        New DataFrame with log_g added.
-    """
-
-    def _valid_logg(series: pd.Series) -> pd.Series:
-        s = series.astype(float)
-        return (
-            pd.notnull(s)
-            & np.isfinite(s)
-            & (s >= _LOGG_VALID_LO)
-            & (s <= _LOGG_VALID_HI)
-        )
-
-    logg_esphs = (
-        work["logg_esphs"]
-        if "logg_esphs" in work.columns
-        else pd.Series(np.nan, index=work.index)
-    )
-    logg_gspspec = (
-        work["logg_gspspec"]
-        if "logg_gspspec" in work.columns
-        else pd.Series(np.nan, index=work.index)
-    )
-    logg_gspphot = (
-        work["logg_gspphot"]
-        if "logg_gspphot" in work.columns
-        else pd.Series(np.nan, index=work.index)
-    )
-
-    has_logg_esphs = _valid_logg(logg_esphs)
-    has_logg_gspspec = _valid_logg(logg_gspspec) & ~has_logg_esphs
-    has_logg_gspphot = _valid_logg(logg_gspphot) & ~has_logg_esphs & ~has_logg_gspspec
-
-    log_g = np.where(
-        has_logg_esphs,
-        logg_esphs.astype(float),
-        np.where(
-            has_logg_gspspec,
-            logg_gspspec.astype(float),
-            np.where(has_logg_gspphot, logg_gspphot.astype(float), np.nan),
-        ),
-    )
-
-    work["log_g"] = log_g
 
     return work
 

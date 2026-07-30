@@ -10,6 +10,7 @@ name = "pm_masyr"
 expression = "g.pm"
 dtype = "float64"
 sidecar = "motion"
+sidecar_column = "pm_total_masyr"
 unit = "mas yr-1"
 
 [[fields]]

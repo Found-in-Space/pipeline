@@ -11,10 +11,6 @@ import yaml
 
 _YAML_SUFFIXES = (".yaml", ".yml")
 
-# Optional packaged defaults live in sibling `data/`. The directory is empty in
-# the core distribution; controlled projects normally select explicit YAML.
-_PACKAGE_DATA_DIR = Path(__file__).resolve().parent / "data"
-
 
 def icrs_spherical_to_cartesian_pc(
     ra_deg: float, dec_deg: float, r_pc: float
@@ -35,10 +31,6 @@ def _sorted_yaml_paths(paths: Iterable[Path]) -> Iterator[Path]:
         (p for p in paths if p.is_file() and p.suffix.lower() in _YAML_SUFFIXES),
         key=lambda p: p.name,
     )
-
-
-def _default_data_dir() -> Path:
-    return _PACKAGE_DATA_DIR
 
 
 def _explicit_yaml_paths(source_paths: Iterable[Path]) -> list[Path]:
@@ -77,22 +69,10 @@ def iter_override_source_files(
         raise ValueError("data_dir and source_paths are mutually exclusive")
     if source_paths is not None:
         return _explicit_yaml_paths(source_paths)
-    root = data_dir if data_dir is not None else _default_data_dir()
+    if data_dir is None:
+        return []
+    root = data_dir
     return list(_sorted_yaml_paths(root.iterdir()))
-
-
-def load_override_source_texts(
-    data_dir: Path | None = None,
-    *,
-    source_paths: Iterable[Path] | None = None,
-) -> dict[str, str]:
-    """Load all override YAML files as text keyed by filename."""
-    out: dict[str, str] = {}
-    for path in iter_override_source_files(
-        data_dir=data_dir, source_paths=source_paths
-    ):
-        out[path.name] = path.read_text(encoding="utf-8")
-    return out
 
 
 def _parse_yaml_file(path: Path) -> Any:

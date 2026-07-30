@@ -127,7 +127,7 @@ runs/stars/<run-id>/
 
 The project files resolve paths relative to this directory and pin exact raw,
 package, and derived input identities. Commands are invoked with the explicit
-project path rather than a repository-default `project.toml`.
+project path rather than a repository-default configuration.
 
 Use a run ID that includes its creation date, pipeline Git SHA, and a short hash
 of the authored run configuration. Record the octree Git SHA separately.

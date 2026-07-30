@@ -10,15 +10,15 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from foundinspace.pipeline.overrides.distance_research import (
+from foundinspace.pipeline.overrides.loader import load_parsed_override_documents
+from tools.curation.distance_resolution_v1.research import (
     DEFAULT_TRACKER_PATH,
     load_distance_tracker,
 )
-from foundinspace.pipeline.overrides.loader import load_parsed_override_documents
 
 DEFAULT_PREFLIGHT_DIR = Path("downloads/official-upper-level-preflight")
-DEFAULT_RESOLVED_OVERRIDE_PATH = (
-    Path(__file__).parent / "research" / "distance-resolution-v1-resolved.yaml"
+DEFAULT_RESOLVED_OVERRIDE_PATH = Path(__file__).with_name(
+    "distance-resolution-v1-resolved.yaml"
 )
 
 _PREFLIGHT_FILES = {

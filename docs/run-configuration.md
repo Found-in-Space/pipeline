@@ -1,6 +1,7 @@
 # Run Configuration
 
-This pipeline is configured by a TOML project file. The project file is the
+This pipeline is configured by a TOML project file. A controlled project lives
+in a named run directory and is the
 record of where source catalog downloads live, where processed artifacts are
 written, which Gaia calculation engine is used, and how the final merged output
 is partitioned.
@@ -14,41 +15,64 @@ uv sync
 uv run fis-pipeline --help
 ```
 
-Create a starter project:
+Create a named controlled run:
 
 ```bash
-uv run fis-pipeline project init --profile small project.toml
+uv run fis-pipeline project init-run --profile small \
+  /data/fis/runs/stars/stars-small-20260730
 ```
 
-Use `--profile full` or omit `--profile` for the conventional full local
-layout. Profiles are only starter templates; publication runs should commit or
-archive the resolved project file used for the run.
+Edit `/data/fis/runs/stars/stars-small-20260730/pipeline.toml` to reference the
+exact immutable raw and derived inputs. Heavy inputs may live elsewhere; only
+their paths and identities are captured in the run directory. Set
+`[overrides].source_paths` to the reviewed YAML files, or leave the explicit
+empty list when no overrides are intended. Then validate the complete contract:
+
+```bash
+uv run fis-pipeline project validate --project \
+  /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+```
+
+Use `--profile full` or omit `--profile` for a full run. The older
+`project init PROJECT_PATH` command remains available for ad-hoc projects, but
+it does not create controlled-run metadata.
 
 ## Pipeline Flow
 
-Build the smaller supporting feeds:
+Acquire the smaller supporting feeds explicitly, then build them:
 
 ```bash
-uv run fis-pipeline hip build --project project.toml
-uv run fis-pipeline gaia-to-hip build --project project.toml
-uv run fis-pipeline identifiers build --project project.toml
-uv run fis-pipeline overrides build --project project.toml
+uv run fis-pipeline hip download --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline gaia-to-hip download --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline identifiers download --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+
+uv run fis-pipeline hip build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline gaia-to-hip build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline identifiers build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline overrides build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 ```
+
+Build commands never acquire or replace raw inputs. Their `--force` flag
+controls only derived outputs; use `download --force` for an intentional
+re-acquisition. `identifiers build` requires the configured accepted
+Gaia–Hipparcos map and fails rather than silently omitting Gaia identifiers.
+`hip build --limit` additionally requires `--output` pointing somewhere other
+than the canonical project output.
 
 Plan, download, and stage Gaia:
 
 ```bash
-uv run fis-pipeline gaia download plan --project project.toml
-uv run fis-pipeline gaia download run --project project.toml
-uv run fis-pipeline gaia build --project project.toml
+uv run fis-pipeline gaia download plan --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline gaia download run --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline gaia build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 ```
 
 If Gaia result-size estimates need to change after some batches already
 finished, replan only unexecuted work:
 
 ```bash
-uv run fis-pipeline gaia download replan-pending --project project.toml --bytes-per-row 250
-uv run fis-pipeline gaia download run --project project.toml
+uv run fis-pipeline gaia download replan-pending --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml --bytes-per-row 250
+uv run fis-pipeline gaia download run --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 ```
 
 Downloaded or remotely completed batches are preserved; only planned or failed
@@ -57,17 +81,19 @@ pending batches are replaced.
 For a browser-assisted Gaia run, generate ADQL instead of submitting jobs:
 
 ```bash
-uv run fis-pipeline gaia download queries --project project.toml
+uv run fis-pipeline gaia download queries --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 ```
 
-Paste `download.adql` into the Gaia Archive web UI, download the VOTable gzip,
-place it under `[gaia].input_dir`, then run `gaia build`.
+Paste `download.adql` into the Gaia Archive web UI and place the VOTable gzip
+under `[gaia].input_dir`. Browser-managed input directories must use
+`input_mode = "directory"`. Scripted acquisitions use
+`input_mode = "download-state"` and require a complete, matching state DB.
 
 Build the publication view:
 
 ```bash
-uv run fis-pipeline merge build --project project.toml
-uv run fis-pipeline merge quality-report --project project.toml
+uv run fis-pipeline merge build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
+uv run fis-pipeline merge quality-report --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 ```
 
 The current merge requires a pre-resolved one-to-one Gaia/Hipparcos map. The
@@ -79,14 +105,17 @@ exists, use H2BN or another independently resolved one-to-one map.
 
 ## Project File Contract
 
-`format_version = 1` is the supported project format. Paths may be absolute or
+`format_version = 1` remains the supported project format. Paths may be absolute or
 relative to the project file. Environment-variable syntax inside path strings is
 rejected so runs are reproducible.
 
 The important sections are:
 
-- `[gaia]`: VOTable input directory, staged Parquet output directory, optional
-  local Gaia G magnitude limit, and `calculation_engine`.
+- `[run]`: controlled-run ID and provenance directory. The ID must match the
+  directory containing `pipeline.toml`.
+- `[gaia]`: explicit `input_mode`, VOTable input directory, staged Parquet
+  output directory, optional local Gaia G magnitude limit, and
+  `calculation_engine`.
 - `[gaia_download]`: Gaia Archive mode, access, row planning, async quota
   settings, optional source `WHERE` fragment, and optional carry field sets.
 - `[gaia-to-hip]`: cached Gaia DR3 `hipparcos2_best_neighbour` path, processed
@@ -101,8 +130,18 @@ The important sections are:
 - `[merge]`: merged output directory, HEALPix order, and optional sidecar output
   directory.
 
-Only sections required by the command being run must be present. Missing
-sections fail when accessed.
+Ad-hoc projects need only the sections used by a command. A project containing
+`[run]` is controlled and every command enforces the complete production
+contract, including explicit Gaia input and override selection.
+
+## Command Provenance
+
+Every project-backed command in a controlled run writes a new JSON event under
+`[run].provenance_dir`. Events are never reused or overwritten. Each records
+the run ID, exact project hash and resolved paths, pipeline Git SHA and dirty
+state, parameters, start/end/status, and content identities for referenced
+inputs and outputs. Directories receive deterministic tree hashes; no catalog
+payload is copied into the provenance directory.
 
 ## Gaia Query Bundle
 
@@ -144,10 +183,11 @@ database.
 
 ## Publication Capture
 
-A publication run should retain enough information to prove which data and code
-created the output. Capture at least:
+A controlled run automatically captures the project hash, resolved paths, code
+identity, command parameters, status, and artifact identities. Retain the named
+run directory plus:
 
-- the exact `project.toml`;
+- the exact `pipeline.toml` and its `provenance/` events;
 - the pipeline git SHA;
 - the Gaia `calculation_engine`;
 - the generated Gaia count and download ADQL bundle;

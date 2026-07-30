@@ -6,7 +6,6 @@ from foundinspace.pipeline.overrides.loader import (
     icrs_spherical_to_cartesian_pc,
     iter_override_source_files,
     load_normalized_override_stars,
-    load_override_source_texts,
 )
 
 
@@ -33,8 +32,8 @@ def test_iter_override_source_files_uses_explicit_paths_in_given_order(
     assert files == [second, first]
 
 
-def test_packaged_override_source_set_is_empty():
-    assert load_override_source_texts() == {}
+def test_default_override_source_set_is_empty():
+    assert iter_override_source_files() == []
 
 
 def test_load_normalized_override_stars_fills_cartesian_for_spherical_fixture(

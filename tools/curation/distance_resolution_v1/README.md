@@ -1,11 +1,12 @@
-# Distance resolution tracker
+# Distance resolution curation
 
 `distance-resolution-v1.csv` is the tracked work list for the 81 stars whose
 pipeline distance remains unsuitable for a release build after the automatic
 astrometry policy is applied.
 
-This is not an executable override file. The override loader reads YAML only
-from `overrides/data`, so research results cannot accidentally change a build.
+This directory is repository-only curation tooling and is not included in the
+installed pipeline package. The CSV is not an executable override file, so
+research results cannot accidentally change a build.
 Each row records the canonical pipeline identity, useful aliases, the current
 fallback, the reason external evidence was required, and the best distance
 found so far.
@@ -15,7 +16,7 @@ All 81 targets now have a cited distance and uncertainty. The tracker contains
 
 - `resolved` means the evidence is strong enough for override review. It is not
   automatically executable; promotion still requires an explicit versioned
-  `replace` override in `overrides/data`.
+  `replace` override selected explicitly by a controlled project.
 - `provisional` means the row contains the best published or catalogued value
   currently available, but a conflict, component ambiguity, catalog quality
   flag, or membership question makes automatic promotion premature.
@@ -41,7 +42,7 @@ several bright variables and multiple systems.
 Run the catalog search with:
 
 ```bash
-uv run python scripts/research_override_distances.py
+uv run python -m tools.curation.distance_resolution_v1.research_cli
 ```
 
 By default it queries SIMBAD, Gaia DR3 plus the Bailer-Jones EDR3 distance
@@ -60,8 +61,8 @@ hashes.
 Generate or cross-check it with:
 
 ```bash
-uv run python scripts/build_distance_override_yaml.py --force
-uv run python scripts/build_distance_override_yaml.py --check
+uv run python -m tools.curation.distance_resolution_v1.build_overrides_cli --force
+uv run python -m tools.curation.distance_resolution_v1.build_overrides_cli --check
 ```
 
 The build requires the matching `official-upper-level-preflight` artifacts in

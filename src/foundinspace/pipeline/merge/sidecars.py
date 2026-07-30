@@ -5,72 +5,13 @@ from typing import Any
 
 import pandas as pd
 
+from foundinspace.pipeline.gaia.download.fieldsets import (
+    GaiaCarryField,
+    fields_by_sidecar,
+)
 from foundinspace.pipeline.merge import shards
 
 SIDECAR_ID_COLS = ["source", "source_id", "gaia_source_id"]
-
-_MOTION_COLUMN_MAP = {
-    "gaia_ref_epoch": "ref_epoch",
-    "gaia_pmra_masyr": "pmra_masyr",
-    "gaia_pmdec_masyr": "pmdec_masyr",
-    "gaia_pm_masyr": "pm_total_masyr",
-    "gaia_pmra_error_masyr": "pmra_error_masyr",
-    "gaia_pmdec_error_masyr": "pmdec_error_masyr",
-    "gaia_pmra_pmdec_corr": "pmra_pmdec_corr",
-    "gaia_parallax_mas": "parallax_mas",
-    "gaia_parallax_error_mas": "parallax_error_mas",
-    "gaia_bp_rp": "bp_rp",
-    "gaia_photometry_quality": "photometry_quality",
-    "gaia_distance_use_pc": "distance_use_pc",
-    "gaia_r_lo_pc": "r_lo_pc",
-    "gaia_r_hi_pc": "r_hi_pc",
-    "gaia_radial_velocity_kms": "radial_velocity_kms",
-    "gaia_radial_velocity_error_kms": "radial_velocity_error_kms",
-    "gaia_rv_method_used": "rv_method_used",
-    "gaia_rv_nb_transits": "rv_nb_transits",
-    "gaia_rv_visibility_periods_used": "rv_visibility_periods_used",
-    "gaia_rv_expected_sig_to_noise": "rv_expected_sig_to_noise",
-    "gaia_rv_renormalised_gof": "rv_renormalised_gof",
-    "gaia_rv_chisq_pvalue": "rv_chisq_pvalue",
-    "gaia_rv_amplitude_robust": "rv_amplitude_robust",
-}
-
-_MASS_COLUMN_MAP = {
-    "gaia_mass_flame_solar": "mass_flame_solar",
-    "gaia_mass_flame_lower_solar": "mass_flame_lower_solar",
-    "gaia_mass_flame_upper_solar": "mass_flame_upper_solar",
-    "gaia_mass_flame_spec_solar": "mass_flame_spec_solar",
-    "gaia_mass_flame_spec_lower_solar": "mass_flame_spec_lower_solar",
-    "gaia_mass_flame_spec_upper_solar": "mass_flame_spec_upper_solar",
-    "gaia_lum_flame_solar": "lum_flame_solar",
-    "gaia_lum_flame_lower_solar": "lum_flame_lower_solar",
-    "gaia_lum_flame_upper_solar": "lum_flame_upper_solar",
-    "gaia_lum_flame_spec_solar": "lum_flame_spec_solar",
-    "gaia_lum_flame_spec_lower_solar": "lum_flame_spec_lower_solar",
-    "gaia_lum_flame_spec_upper_solar": "lum_flame_spec_upper_solar",
-    "gaia_radius_flame_solar": "radius_flame_solar",
-    "gaia_radius_flame_lower_solar": "radius_flame_lower_solar",
-    "gaia_radius_flame_upper_solar": "radius_flame_upper_solar",
-    "gaia_radius_flame_spec_solar": "radius_flame_spec_solar",
-    "gaia_radius_flame_spec_lower_solar": "radius_flame_spec_lower_solar",
-    "gaia_radius_flame_spec_upper_solar": "radius_flame_spec_upper_solar",
-    "gaia_age_flame_gyr": "age_flame_gyr",
-    "gaia_age_flame_lower_gyr": "age_flame_lower_gyr",
-    "gaia_age_flame_upper_gyr": "age_flame_upper_gyr",
-    "gaia_age_flame_spec_gyr": "age_flame_spec_gyr",
-    "gaia_age_flame_spec_lower_gyr": "age_flame_spec_lower_gyr",
-    "gaia_age_flame_spec_upper_gyr": "age_flame_spec_upper_gyr",
-    "gaia_bc_flame": "bc_flame",
-    "gaia_teff_gspphot": "teff_gspphot",
-    "gaia_logg_gspphot": "logg_gspphot",
-    "gaia_mh_gspphot": "mh_gspphot",
-    "gaia_ag_gspphot": "ag_gspphot",
-    "gaia_flags_flame": "flags_flame",
-    "gaia_evolstage_flame": "evolstage_flame",
-    "gaia_flags_flame_spec": "flags_flame_spec",
-    "gaia_evolstage_flame_spec": "evolstage_flame_spec",
-    "gaia_bc_flame_spec": "bc_flame_spec",
-}
 
 
 def gaia_enrichment_columns(columns: list[str] | set[str]) -> list[str]:
@@ -133,6 +74,7 @@ def from_records(
 def write_gaia_sidecars(
     sidecar_df: pd.DataFrame,
     *,
+    carry_fields: tuple[GaiaCarryField, ...],
     hp: Any,
     sidecar_root: Path,
     phase_tag: str,
@@ -153,39 +95,33 @@ def write_gaia_sidecars(
         output_cols=SIDECAR_ID_COLS + enrichment_cols,
         seq_by_key=seq_by_key,
     )
-    rows += _write_derived_sidecar(
-        sidecar_df,
-        hp=hp,
-        sidecar_root=sidecar_root,
-        sidecar_name="motion",
-        column_map=_MOTION_COLUMN_MAP,
-        phase_tag=phase_tag,
-        seq_by_key=seq_by_key,
-    )
-    rows += _write_derived_sidecar(
-        sidecar_df,
-        hp=hp,
-        sidecar_root=sidecar_root,
-        sidecar_name="mass",
-        column_map=_MASS_COLUMN_MAP,
-        phase_tag=phase_tag,
-        seq_by_key=seq_by_key,
-    )
+    for sidecar_name, declared_fields in fields_by_sidecar(carry_fields).items():
+        rows += _write_declared_sidecar(
+            sidecar_df,
+            hp=hp,
+            sidecar_root=sidecar_root,
+            sidecar_name=sidecar_name,
+            fields=declared_fields,
+            phase_tag=phase_tag,
+            seq_by_key=seq_by_key,
+        )
     return rows
 
 
-def _write_derived_sidecar(
+def _write_declared_sidecar(
     sidecar_df: pd.DataFrame,
     *,
     hp: Any,
     sidecar_root: Path,
     sidecar_name: str,
-    column_map: dict[str, str],
+    fields: tuple[GaiaCarryField, ...],
     phase_tag: str,
     seq_by_key: dict[tuple[str, int], int],
 ) -> int:
     available = [
-        (src, dst) for src, dst in column_map.items() if src in sidecar_df.columns
+        (field.output_column, field.sidecar_output_column)
+        for field in fields
+        if field.output_column in sidecar_df.columns
     ]
     if not available:
         return 0

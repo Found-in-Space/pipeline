@@ -23,10 +23,12 @@ The current implemented path remains:
    selects the best valid staged render photometry and temperature, and retains
    Hipparcos canonical identity.
 
-There is no `pairings resolve` command yet. Do not pass the policy-neutral
-evidence union to `merge build --crossmatch-path` or configure it as a
+There is no `pairings resolve` command yet. Do not configure the policy-neutral
+evidence union as the accepted `[gaia-to-hip].output_parquet` or as a
 supplemental map: the one-to-one validation will reject it, and dropping
-conflicting rows without a recorded policy would not be reproducible.
+conflicting rows without a recorded policy would not be reproducible. The
+project-level output is authoritative for merge, identifiers, and quality
+reporting; the deprecated merge-only CLI option cannot select another map.
 
 The current astrometry-winner policy still normally uses raw Gaia G for its
 brightness-dependent margin. Output construction is field-level: when the

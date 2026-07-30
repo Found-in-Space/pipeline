@@ -29,7 +29,6 @@ HIP_MARGIN_VERY_BRIGHT = 1.0  # G < 3.5: Hip wins if strictly better
 HIP_MARGIN_BRIGHT = 0.6  # 3.5 <= G < 6: Hip must be >=40% better
 HIP_MARGIN_NORMAL = 0.5  # G >= 6: Hip must be >=50% better
 
-RUWE_WARN_THRESHOLD = 1.4
 HIP_SOLUTION_STANDARD = 5  # Hipparcos Sn=5 = standard 5-param single-star
 
 

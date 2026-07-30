@@ -4,17 +4,9 @@ from pathlib import Path
 
 from foundinspace.pipeline.gaia.download.planner import (
     HealpixCount,
-    best_subset_under_limit,
     plan_download_batches,
 )
 from foundinspace.pipeline.gaia.download.state import GaiaDownloadState
-
-
-def test_best_subset_under_limit_is_not_simple_greedy() -> None:
-    chosen, total = best_subset_under_limit([8, 6, 4, 4], 10)
-
-    assert total == 10
-    assert chosen in ([1, 2], [1, 3])
 
 
 def test_plan_download_batches_handles_small_and_over_cap() -> None:

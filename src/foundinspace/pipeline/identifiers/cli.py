@@ -2,9 +2,14 @@ from pathlib import Path
 
 import click
 
-import foundinspace.pipeline.identifiers.download
+from foundinspace.pipeline.cli_support import (
+    load_project_or_die,
+    project_option,
+    record_command_or_die,
+    require_input_file,
+)
+from foundinspace.pipeline.identifiers.download import main as download_command
 from foundinspace.pipeline.identifiers.pipeline import prepare_identifiers_sidecar
-from foundinspace.pipeline.project import load_project
 
 
 @click.group(name="identifiers")
@@ -12,27 +17,7 @@ def cli():
     pass
 
 
-cli.add_command(foundinspace.pipeline.identifiers.download.main, name="download")
-
-
-def _load_project_or_die(project_path: Path, *required: str):
-    try:
-        project = load_project(project_path)
-        if required:
-            project.require(*required)
-        return project
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-
-def _crossmatch_parquet(project) -> Path | None:
-    """Read crossmatch path from [gaia-to-hip] if the section and file exist."""
-    if not project.gaia_to_hip.is_configured:
-        return None
-    cm = project.gaia_to_hip.output_parquet
-    if not cm.is_file():
-        return None
-    return cm
+cli.add_command(download_command, name="download")
 
 
 def _overrides_data_dir(project) -> Path | None:
@@ -50,33 +35,57 @@ def _overrides_source_paths(project) -> tuple[Path, ...] | None:
 
 
 @cli.command(name="build")
-@click.option(
-    "--project",
-    "project_path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Path to pipeline project TOML.",
-)
+@project_option
 @click.option("--force", "-f", is_flag=True, default=False)
 def build(
     project_path: Path,
     force: bool,
 ) -> None:
-    project = _load_project_or_die(project_path, "identifiers")
-    outputs = foundinspace.pipeline.identifiers.download.ensure_identifier_catalogs(
-        hip_hd_output=project.identifiers.hip_hd_ecsv,
-        iv27a_catalog_output=project.identifiers.iv27a_catalog_ecsv,
-        iv27a_proper_names_output=project.identifiers.iv27a_proper_names_ecsv,
-        force=force,
-    )
-    out = prepare_identifiers_sidecar(
-        outputs["hip_hd"],
-        outputs["iv27a_catalog"],
-        outputs["iv27a_proper_names"],
-        project.identifiers.output_parquet,
-        crossmatch_parquet=_crossmatch_parquet(project),
-        overrides_data_dir=_overrides_data_dir(project),
-        overrides_source_paths=_overrides_source_paths(project),
-        overwrite=force,
-    )
+    project = load_project_or_die(project_path, "identifiers", "gaia-to-hip")
+    source_catalogs = {
+        "hip_hd": project.identifiers.hip_hd_ecsv,
+        "iv27a_catalog": project.identifiers.iv27a_catalog_ecsv,
+        "iv27a_proper_names": project.identifiers.iv27a_proper_names_ecsv,
+    }
+    crossmatch = project.gaia_to_hip.output_parquet
+    inputs: dict[str, Path | tuple[Path, ...]] = {
+        **source_catalogs,
+        "accepted_crossmatch": crossmatch,
+    }
+    overrides_data_dir = _overrides_data_dir(project)
+    overrides_source_paths = _overrides_source_paths(project)
+    if overrides_data_dir is not None:
+        inputs["override_data_dir"] = overrides_data_dir
+    if overrides_source_paths is not None:
+        inputs["override_sources"] = overrides_source_paths
+
+    with record_command_or_die(
+        project,
+        command="identifiers build",
+        parameters={"force": force},
+        inputs=inputs,
+        outputs={"identifier_sidecar": project.identifiers.output_parquet},
+    ):
+        for name, path in source_catalogs.items():
+            require_input_file(path, label=f"[identifiers] {name}_ecsv")
+        require_input_file(
+            crossmatch,
+            label="[gaia-to-hip] output_parquet",
+        )
+        if overrides_source_paths is not None:
+            for source_path in overrides_source_paths:
+                require_input_file(
+                    source_path,
+                    label="[overrides] source_paths entry",
+                )
+        out = prepare_identifiers_sidecar(
+            source_catalogs["hip_hd"],
+            source_catalogs["iv27a_catalog"],
+            source_catalogs["iv27a_proper_names"],
+            project.identifiers.output_parquet,
+            crossmatch_parquet=crossmatch,
+            overrides_data_dir=overrides_data_dir,
+            overrides_source_paths=overrides_source_paths,
+            overwrite=force,
+        )
     click.echo(f"Wrote wide identifier sidecar to {out.resolve()}")

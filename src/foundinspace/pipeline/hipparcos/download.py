@@ -6,7 +6,11 @@ from pathlib import Path
 
 import click
 
-from foundinspace.pipeline.project import load_project
+from foundinspace.pipeline.cli_support import (
+    load_project_or_die,
+    project_option,
+    record_command_or_die,
+)
 
 VIZIER_CATALOG = "I/311/hip2"
 
@@ -52,13 +56,7 @@ def ensure_hipparcos_ecsv(
 
 
 @click.command()
-@click.option(
-    "--project",
-    "project_path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Path to pipeline project TOML.",
-)
+@project_option
 @click.option(
     "--force",
     "-f",
@@ -67,12 +65,14 @@ def ensure_hipparcos_ecsv(
     help="Re-download even if the output file already exists.",
 )
 def main(project_path: Path, force: bool) -> None:
-    try:
-        project = load_project(project_path)
-        project.require("hip")
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-    path = ensure_hipparcos_ecsv(project.hip.download_ecsv, force=force)
+    project = load_project_or_die(project_path, "hip")
+    with record_command_or_die(
+        project,
+        command="hip download",
+        parameters={"force": force},
+        outputs={"hipparcos_ecsv": project.hip.download_ecsv},
+    ):
+        path = ensure_hipparcos_ecsv(project.hip.download_ecsv, force=force)
     click.echo(f"Hipparcos catalog ready at {path.resolve()}")
 
 

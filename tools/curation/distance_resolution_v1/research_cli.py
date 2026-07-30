@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from foundinspace.pipeline.overrides.distance_research import (
+from tools.curation.distance_resolution_v1.research import (
     DEFAULT_OUTPUT_DIR,
     DEFAULT_TRACKER_PATH,
     SUPPORTED_SERVICES,

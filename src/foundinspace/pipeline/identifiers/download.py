@@ -6,7 +6,11 @@ from pathlib import Path
 
 import click
 
-from foundinspace.pipeline.project import load_project
+from foundinspace.pipeline.cli_support import (
+    load_project_or_die,
+    project_option,
+    record_command_or_die,
+)
 
 HIP_HD_CATALOG = "I/239/hip_main"
 IV27A_CATALOG = "IV/27A/catalog"
@@ -47,38 +51,31 @@ def ensure_identifier_catalogs(
         "iv27a_catalog": Path(iv27a_catalog_output).expanduser(),
         "iv27a_proper_names": Path(iv27a_proper_names_output).expanduser(),
     }
-    if not force and all(path.exists() and path.is_file() for path in outputs.values()):
-        return outputs
-
-    outputs["hip_hd"] = _fetch_catalog_to_ecsv(
-        catalog=HIP_HD_CATALOG,
-        columns=["HIP", "HD"],
-        output_path=outputs["hip_hd"],
-        overwrite=True,
-    )
-    outputs["iv27a_catalog"] = _fetch_catalog_to_ecsv(
-        catalog=IV27A_CATALOG,
-        columns=["HIP", "HD", "Bayer", "Fl", "Cst"],
-        output_path=outputs["iv27a_catalog"],
-        overwrite=True,
-    )
-    outputs["iv27a_proper_names"] = _fetch_catalog_to_ecsv(
-        catalog=IV27A_PROPER_NAMES,
-        columns=["HD", "Name"],
-        output_path=outputs["iv27a_proper_names"],
-        overwrite=True,
-    )
+    specs = {
+        "hip_hd": (HIP_HD_CATALOG, ["HIP", "HD"]),
+        "iv27a_catalog": (
+            IV27A_CATALOG,
+            ["HIP", "HD", "Bayer", "Fl", "Cst"],
+        ),
+        "iv27a_proper_names": (IV27A_PROPER_NAMES, ["HD", "Name"]),
+    }
+    for name, path in outputs.items():
+        if path.exists() and not path.is_file():
+            raise ValueError(f"Output path exists but is not a regular file: {path}")
+        if path.is_file() and not force:
+            continue
+        catalog, columns = specs[name]
+        outputs[name] = _fetch_catalog_to_ecsv(
+            catalog=catalog,
+            columns=columns,
+            output_path=path,
+            overwrite=True,
+        )
     return outputs
 
 
 @click.command()
-@click.option(
-    "--project",
-    "project_path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Path to pipeline project TOML.",
-)
+@project_option
 @click.option(
     "--force",
     "-f",
@@ -90,17 +87,24 @@ def main(
     project_path: Path,
     force: bool,
 ) -> None:
-    try:
-        project = load_project(project_path)
-        project.require("identifiers")
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-    outputs = ensure_identifier_catalogs(
-        hip_hd_output=project.identifiers.hip_hd_ecsv,
-        iv27a_catalog_output=project.identifiers.iv27a_catalog_ecsv,
-        iv27a_proper_names_output=project.identifiers.iv27a_proper_names_ecsv,
-        force=force,
-    )
+    project = load_project_or_die(project_path, "identifiers")
+    output_paths = {
+        "hip_hd": project.identifiers.hip_hd_ecsv,
+        "iv27a_catalog": project.identifiers.iv27a_catalog_ecsv,
+        "iv27a_proper_names": project.identifiers.iv27a_proper_names_ecsv,
+    }
+    with record_command_or_die(
+        project,
+        command="identifiers download",
+        parameters={"force": force},
+        outputs=output_paths,
+    ):
+        outputs = ensure_identifier_catalogs(
+            hip_hd_output=project.identifiers.hip_hd_ecsv,
+            iv27a_catalog_output=project.identifiers.iv27a_catalog_ecsv,
+            iv27a_proper_names_output=project.identifiers.iv27a_proper_names_ecsv,
+            force=force,
+        )
     click.echo(f"HIP→HD catalog ready at {outputs['hip_hd'].resolve()}")
     click.echo(f"IV/27A catalog ready at {outputs['iv27a_catalog'].resolve()}")
     click.echo(

@@ -17,12 +17,16 @@ Requires Python 3.13 or newer and `uv`.
 ```bash
 uv sync
 uv run fis-pipeline --help
-uv run fis-pipeline project init --profile small project.toml
+uv run fis-pipeline project init-run --profile small \
+  /data/fis/runs/stars/stars-small-dev
+uv run fis-pipeline project validate --project \
+  /data/fis/runs/stars/stars-small-dev/pipeline.toml
 ```
 
-The `small` profile uses real catalog downloads, including a scripted Gaia
-download path. Gaia VOTables are written under `[gaia].input_dir`, then staged
-with `fis-pipeline gaia build`.
+The named run directory keeps the exact configuration and immutable command
+provenance together. Catalog payloads may remain on specialist volumes through
+explicit paths in `pipeline.toml`. The `small` profile uses real catalog
+downloads, including the scripted Gaia path.
 
 For the guided path, start with [docs/README.md](docs/README.md).
 
@@ -36,7 +40,7 @@ uv run fis-pipeline --help
 
 Command groups:
 
-- `project` - write starter project files.
+- `project` - create and validate ad-hoc or named controlled projects.
 - `gaia` - download Gaia VOTables and process them into staged Parquet.
 - `hip` - download and process Hipparcos.
 - `gaia-to-hip` - download and build the Gaia-to-Hipparcos crossmatch sidecar.
@@ -59,12 +63,19 @@ src/foundinspace/pipeline/
   overrides/       manual curated rows
   merge/           canonical merged output
   constants.py     shared schema and quality flags
-  project.py       project.toml contract and profile rendering
+  project.py       pipeline.toml contract and profile rendering
+  provenance.py    controlled-run command evidence
+  schema.py        supported output schema exports
+  sharding.py      supported downstream sharding API
+  validation.py    supported release-validation API
   cli.py           one CLI entry point
 ```
 
 Checked-in project templates live in [profiles/](profiles/). They are TOML
 templates only; catalog data is not stored in git.
+
+Repository-only evidence collection and review workflows live under
+`tools/curation/`; they are not installed as pipeline runtime modules.
 
 ## Documentation
 
