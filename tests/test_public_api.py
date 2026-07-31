@@ -1,8 +1,14 @@
+import pyarrow as pa
+
 from foundinspace.pipeline.crossmatch import (
     GAIA_HIP_MAP_COLS,
     empty_gaia_hip_mapping,
 )
-from foundinspace.pipeline.schema import MERGED_OUTPUT_COLS, OUTPUT_COLS
+from foundinspace.pipeline.schema import (
+    MERGED_OUTPUT_COLS,
+    MERGED_OUTPUT_SCHEMA,
+    OUTPUT_COLS,
+)
 from foundinspace.pipeline.sharding import build_healpix, write_sidecar_shards
 from foundinspace.pipeline.validation import (
     ISSUES_FILENAME,
@@ -13,6 +19,8 @@ from foundinspace.pipeline.validation import (
 
 def test_supported_consumer_api_exports_current_contracts() -> None:
     assert MERGED_OUTPUT_COLS == OUTPUT_COLS
+    assert MERGED_OUTPUT_SCHEMA.names == OUTPUT_COLS
+    assert MERGED_OUTPUT_SCHEMA.field("quality_flags").type == pa.uint16()
     assert list(empty_gaia_hip_mapping().columns) == GAIA_HIP_MAP_COLS
     assert ISSUES_FILENAME.endswith(".parquet")
     assert callable(build_healpix)

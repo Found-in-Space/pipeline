@@ -14,6 +14,25 @@ from foundinspace.pipeline.constants import OUTPUT_COLS
 
 # Merged HEALPix shards use the same schema as per-catalog OUTPUT_COLS.
 MERGED_OUTPUT_COLS = list(OUTPUT_COLS)
+MERGED_OUTPUT_SCHEMA = pa.schema(
+    [
+        pa.field("source", pa.large_string()),
+        pa.field("source_id", pa.large_string()),
+        pa.field("x_icrs_pc", pa.float64()),
+        pa.field("y_icrs_pc", pa.float64()),
+        pa.field("z_icrs_pc", pa.float64()),
+        pa.field("ra_deg", pa.float64()),
+        pa.field("dec_deg", pa.float64()),
+        pa.field("r_pc", pa.float64()),
+        pa.field("mag_abs", pa.float64()),
+        pa.field("teff", pa.float64()),
+        pa.field("quality_flags", pa.uint16()),
+        pa.field("astrometry_quality", pa.float64()),
+        pa.field("photometry_quality", pa.float64()),
+    ]
+)
+if MERGED_OUTPUT_SCHEMA.names != MERGED_OUTPUT_COLS:
+    raise RuntimeError("Merged output schema must match OUTPUT_COLS")
 
 
 def _build_healpix(order: int):
@@ -62,7 +81,12 @@ def _write_shards(
         seq_by_pixel[pixel_i] = next_seq
         out_path = pixel_dir / f"{next_seq:06d}_{phase_tag}.parquet"
         part = df.loc[pixels == pixel_i, MERGED_OUTPUT_COLS]
-        table = pa.Table.from_pandas(part, preserve_index=False)
+        table = pa.Table.from_pandas(
+            part,
+            schema=MERGED_OUTPUT_SCHEMA,
+            preserve_index=False,
+            safe=True,
+        )
         pq.write_table(table, str(out_path), compression="zstd")
         rows_written += len(part)
     return rows_written

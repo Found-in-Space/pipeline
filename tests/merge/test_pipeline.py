@@ -40,6 +40,7 @@ from foundinspace.pipeline.merge.policy import (
     _safe_score,
     fuse_matched_payload,
 )
+from foundinspace.pipeline.merge.shards import MERGED_OUTPUT_SCHEMA
 
 
 def _write_parquet(df: pd.DataFrame, path: Path) -> None:
@@ -318,6 +319,10 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
 
     merged_files = sorted((output_dir / "healpix").glob("*/*.parquet"))
     assert merged_files
+    assert all(
+        pq.read_schema(path).equals(MERGED_OUTPUT_SCHEMA, check_metadata=False)
+        for path in merged_files
+    )
     merged_df = pd.concat([pd.read_parquet(p) for p in merged_files], ignore_index=True)
 
     assert len(merged_df) == 7
