@@ -1,10 +1,11 @@
-"""Post-merge quality audit for suspicious, non-overridden stars."""
+"""Inline and retrospective quality audits for suspicious merge results."""
 
 from __future__ import annotations
 
 import json
 import math
-from collections.abc import Iterable
+from collections import Counter
+from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass
 from numbers import Integral
 from pathlib import Path
@@ -20,6 +21,15 @@ REPORT_FILENAME = "merge_quality_report.json"
 
 BATCH_SIZE = 250_000
 HIP_STANDARD_SOLUTION = 5
+DEFAULT_ISSUE_BUFFER_ROWS = 4_096
+
+DEFAULT_DISTANCE_DISAGREEMENT_THRESHOLD = 0.25
+DEFAULT_SEVERE_DISTANCE_RATIO = 2.0
+DEFAULT_RUWE_THRESHOLD = 1.4
+DEFAULT_HIGH_ASTROMETRY_QUALITY = 1.0
+DEFAULT_EXTREME_ABS_MAG = -10.0
+DEFAULT_LUMINOUS_ABS_MAG = -8.0
+DEFAULT_REMOTE_LUMINOUS_PC = 20_000.0
 
 QUALITY_ISSUE_COLS = [
     "issue_type",
@@ -64,6 +74,36 @@ QUALITY_ISSUE_COLS = [
     "overridden",
 ]
 
+_QUALITY_STRING_COLS = {
+    "issue_type",
+    "severity",
+    "reasons",
+    "source",
+    "source_id",
+    "label",
+    "gaia_source_id",
+    "hip_source_id",
+    "winner_catalog",
+    "winner_source_id",
+    "tie_break_reason",
+}
+_QUALITY_BOOL_COLS = {"overridden"}
+QUALITY_ISSUE_SCHEMA = pa.schema(
+    [
+        pa.field(
+            column,
+            (
+                pa.string()
+                if column in _QUALITY_STRING_COLS
+                else pa.bool_()
+                if column in _QUALITY_BOOL_COLS
+                else pa.float64()
+            ),
+        )
+        for column in QUALITY_ISSUE_COLS
+    ]
+)
+
 
 @dataclass
 class QualityReport:
@@ -84,9 +124,179 @@ class QualityReport:
     total_issues: int
     issue_counts_by_type: dict[str, int]
     issue_counts_by_severity: dict[str, int]
+    execution_mode: str = "post_merge"
+    max_buffered_issues: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+class StreamingQualityAudit:
+    """Collect merge quality findings without retaining the catalogue or issues."""
+
+    def __init__(
+        self,
+        *,
+        gaia_dir: Path,
+        hip_path: Path,
+        crossmatch_path: Path,
+        overrides_path: Path,
+        merge_dir: Path,
+        override_keys: set[tuple[str, str]],
+        distance_disagreement_threshold: float = (
+            DEFAULT_DISTANCE_DISAGREEMENT_THRESHOLD
+        ),
+        severe_distance_ratio: float = DEFAULT_SEVERE_DISTANCE_RATIO,
+        ruwe_threshold: float = DEFAULT_RUWE_THRESHOLD,
+        high_astrometry_quality: float = DEFAULT_HIGH_ASTROMETRY_QUALITY,
+        extreme_abs_mag: float = DEFAULT_EXTREME_ABS_MAG,
+        luminous_abs_mag: float = DEFAULT_LUMINOUS_ABS_MAG,
+        remote_luminous_pc: float = DEFAULT_REMOTE_LUMINOUS_PC,
+        issue_buffer_rows: int = DEFAULT_ISSUE_BUFFER_ROWS,
+    ) -> None:
+        if issue_buffer_rows < 1:
+            raise ValueError("issue_buffer_rows must be >= 1")
+
+        self.gaia_dir = Path(gaia_dir)
+        self.hip_path = Path(hip_path)
+        self.crossmatch_path = Path(crossmatch_path)
+        self.overrides_path = Path(overrides_path)
+        self.merge_dir = Path(merge_dir)
+        self.issues_path = self.merge_dir / ISSUES_FILENAME
+        self.report_path = self.merge_dir / REPORT_FILENAME
+        self.override_keys = override_keys
+        self.thresholds = {
+            "distance_disagreement_threshold": distance_disagreement_threshold,
+            "severe_distance_ratio": severe_distance_ratio,
+            "ruwe_threshold": ruwe_threshold,
+            "high_astrometry_quality": high_astrometry_quality,
+            "extreme_abs_mag": extreme_abs_mag,
+            "luminous_abs_mag": luminous_abs_mag,
+            "remote_luminous_pc": remote_luminous_pc,
+        }
+        self.issue_buffer_rows = issue_buffer_rows
+        self._buffer: list[dict[str, Any]] = []
+        self._writer: pq.ParquetWriter | None = None
+        self._counts_by_type: Counter[str] = Counter()
+        self._counts_by_severity: Counter[str] = Counter()
+        self._score_decisions = 0
+        self._matched_pair_issues = 0
+        self._merged_row_issues = 0
+        self._max_buffered_issues = 0
+        self._finalized = False
+
+    def observe_matched_pair(
+        self,
+        gaia_rec: dict[str, Any],
+        hip_rec: dict[str, Any],
+        *,
+        winner_catalog: str,
+        winner_source_id: str,
+        tie_break_reason: str,
+        number_of_neighbours: int | None,
+        angular_distance_arcsec: float,
+    ) -> None:
+        """Evaluate a pair while both staged candidates are already in memory."""
+        self._score_decisions += 1
+        issue = _matched_pair_issue_record(
+            gaia_rec,
+            hip_rec,
+            winner_catalog=winner_catalog,
+            winner_source_id=winner_source_id,
+            tie_break_reason=tie_break_reason,
+            number_of_neighbours=number_of_neighbours,
+            angular_distance_arcsec=angular_distance_arcsec,
+            distance_disagreement_threshold=self.thresholds[
+                "distance_disagreement_threshold"
+            ],
+            severe_distance_ratio=self.thresholds["severe_distance_ratio"],
+            ruwe_threshold=self.thresholds["ruwe_threshold"],
+        )
+        if issue is not None:
+            self._matched_pair_issues += 1
+            self._append(issue)
+
+    def observe_merged_rows(self, rows: pd.DataFrame) -> None:
+        """Evaluate one already-materialized merge output batch before its write."""
+        for issue in _iter_merged_row_issue_records(
+            rows,
+            override_keys=self.override_keys,
+            high_astrometry_quality=self.thresholds["high_astrometry_quality"],
+            extreme_abs_mag=self.thresholds["extreme_abs_mag"],
+            luminous_abs_mag=self.thresholds["luminous_abs_mag"],
+            remote_luminous_pc=self.thresholds["remote_luminous_pc"],
+        ):
+            self._merged_row_issues += 1
+            self._append(issue)
+
+    def finalize(
+        self,
+        *,
+        decisions_rows: int,
+    ) -> QualityReport:
+        """Close the bounded writer and emit the aggregate JSON report."""
+        if self._finalized:
+            raise RuntimeError("Quality audit has already been finalized")
+        self._flush()
+        if self._writer is None:
+            pq.write_table(
+                _issues_to_table([]),
+                str(self.issues_path),
+                compression="zstd",
+            )
+        else:
+            self._writer.close()
+            self._writer = None
+        self._finalized = True
+
+        total_issues = self._matched_pair_issues + self._merged_row_issues
+        report = QualityReport(
+            gaia_dir=str(self.gaia_dir),
+            hip_path=str(self.hip_path),
+            crossmatch_path=str(self.crossmatch_path),
+            overrides_path=str(self.overrides_path),
+            merge_dir=str(self.merge_dir),
+            issues_path=str(self.issues_path),
+            thresholds=self.thresholds,
+            score_decisions=self._score_decisions,
+            override_decisions=decisions_rows - self._score_decisions,
+            override_targets=len(self.override_keys),
+            matched_pair_issues=self._matched_pair_issues,
+            merged_row_issues=self._merged_row_issues,
+            total_issues=total_issues,
+            issue_counts_by_type=dict(sorted(self._counts_by_type.items())),
+            issue_counts_by_severity=dict(sorted(self._counts_by_severity.items())),
+            execution_mode="inline",
+            max_buffered_issues=self._max_buffered_issues,
+        )
+        with self.report_path.open("w", encoding="utf-8") as fp:
+            json.dump(report.to_dict(), fp, indent=2, sort_keys=True)
+            fp.write("\n")
+        return report
+
+    def _append(self, issue: dict[str, Any]) -> None:
+        self._counts_by_type[str(issue["issue_type"])] += 1
+        self._counts_by_severity[str(issue["severity"])] += 1
+        self._buffer.append(issue)
+        self._max_buffered_issues = max(
+            self._max_buffered_issues,
+            len(self._buffer),
+        )
+        if len(self._buffer) >= self.issue_buffer_rows:
+            self._flush()
+
+    def _flush(self) -> None:
+        if not self._buffer:
+            return
+        table = _issues_to_table(self._buffer)
+        if self._writer is None:
+            self._writer = pq.ParquetWriter(
+                str(self.issues_path),
+                QUALITY_ISSUE_SCHEMA,
+                compression="zstd",
+            )
+        self._writer.write_table(table)
+        self._buffer.clear()
 
 
 def run_quality_report(
@@ -98,13 +308,13 @@ def run_quality_report(
     merge_dir: Path,
     identifiers_path: Path | None = None,
     output_dir: Path | None = None,
-    distance_disagreement_threshold: float = 0.25,
-    severe_distance_ratio: float = 2.0,
-    ruwe_threshold: float = 1.4,
-    high_astrometry_quality: float = 1.0,
-    extreme_abs_mag: float = -10.0,
-    luminous_abs_mag: float = -8.0,
-    remote_luminous_pc: float = 20_000.0,
+    distance_disagreement_threshold: float = (DEFAULT_DISTANCE_DISAGREEMENT_THRESHOLD),
+    severe_distance_ratio: float = DEFAULT_SEVERE_DISTANCE_RATIO,
+    ruwe_threshold: float = DEFAULT_RUWE_THRESHOLD,
+    high_astrometry_quality: float = DEFAULT_HIGH_ASTROMETRY_QUALITY,
+    extreme_abs_mag: float = DEFAULT_EXTREME_ABS_MAG,
+    luminous_abs_mag: float = DEFAULT_LUMINOUS_ABS_MAG,
+    remote_luminous_pc: float = DEFAULT_REMOTE_LUMINOUS_PC,
     force: bool = False,
 ) -> QualityReport:
     """Write a JSON quality summary plus Parquet table of suspicious stars."""
@@ -465,61 +675,188 @@ def _merged_row_issues(
     for batch in _iter_parquet_batches(
         sorted(shards_root.glob("*/*.parquet")), columns
     ):
-        if batch.empty:
-            continue
-        source = batch["source"].astype(str)
-        source_id = batch["source_id"].astype(str)
-        override_mask = [
-            (src, sid) in override_keys
-            for src, sid in zip(source, source_id, strict=True)
-        ]
-        mag_abs = pd.to_numeric(batch["mag_abs"], errors="coerce")
-        r_pc = pd.to_numeric(batch["r_pc"], errors="coerce")
-        astro_q = pd.to_numeric(batch["astrometry_quality"], errors="coerce")
-        extreme = mag_abs <= extreme_abs_mag
-        low_quality_luminous = (mag_abs <= luminous_abs_mag) & (
-            astro_q >= high_astrometry_quality
-        )
-        remote_luminous = (mag_abs <= luminous_abs_mag) & (r_pc >= remote_luminous_pc)
-        mask = (extreme | low_quality_luminous | remote_luminous) & ~pd.Series(
-            override_mask,
-            index=batch.index,
-        )
-        if not mask.any():
-            continue
-        for rec in batch.loc[mask].to_dict(orient="records"):
-            reasons = []
-            if _safe_float(rec.get("mag_abs")) <= extreme_abs_mag:
-                reasons.append("extreme_absolute_magnitude")
-            if (
-                _safe_float(rec.get("mag_abs")) <= luminous_abs_mag
-                and _safe_float(rec.get("astrometry_quality"))
-                >= high_astrometry_quality
-            ):
-                reasons.append("low_quality_astrometry_for_luminous_row")
-            if (
-                _safe_float(rec.get("mag_abs")) <= luminous_abs_mag
-                and _safe_float(rec.get("r_pc")) >= remote_luminous_pc
-            ):
-                reasons.append("remote_luminous_row")
-            severity = "high" if "extreme_absolute_magnitude" in reasons else "medium"
-            issues.append(
-                _issue_record(
-                    issue_type="merged_row_extreme",
-                    severity=severity,
-                    reasons=reasons,
-                    source=rec.get("source"),
-                    source_id=rec.get("source_id"),
-                    merged_ra_deg=rec.get("ra_deg"),
-                    merged_dec_deg=rec.get("dec_deg"),
-                    merged_r_pc=rec.get("r_pc"),
-                    merged_mag_abs=rec.get("mag_abs"),
-                    merged_teff=rec.get("teff"),
-                    astrometry_quality=rec.get("astrometry_quality"),
-                    photometry_quality=rec.get("photometry_quality"),
-                )
+        issues.extend(
+            _iter_merged_row_issue_records(
+                batch,
+                override_keys=override_keys,
+                high_astrometry_quality=high_astrometry_quality,
+                extreme_abs_mag=extreme_abs_mag,
+                luminous_abs_mag=luminous_abs_mag,
+                remote_luminous_pc=remote_luminous_pc,
             )
+        )
     return issues
+
+
+def _matched_pair_issue_record(
+    gaia_rec: dict[str, Any],
+    hip_rec: dict[str, Any],
+    *,
+    winner_catalog: str,
+    winner_source_id: str,
+    tie_break_reason: str,
+    number_of_neighbours: int | None,
+    angular_distance_arcsec: float,
+    distance_disagreement_threshold: float,
+    severe_distance_ratio: float,
+    ruwe_threshold: float,
+) -> dict[str, Any] | None:
+    gaia_r = _safe_float(gaia_rec.get("r_pc"))
+    hip_r = _safe_float(hip_rec.get("r_pc"))
+    if math.isfinite(gaia_r) and math.isfinite(hip_r) and gaia_r > 0.0 and hip_r > 0.0:
+        distance_ratio = max(gaia_r, hip_r) / min(gaia_r, hip_r)
+        distance_frac_diff = distance_ratio - 1.0
+    else:
+        distance_ratio = math.nan
+        distance_frac_diff = math.nan
+
+    gaia_score = _safe_score(gaia_rec.get("astrometry_quality"))
+    hip_score = _safe_score(hip_rec.get("astrometry_quality"))
+    winner_not_lowest_score = (gaia_score < hip_score and winner_catalog != "gaia") or (
+        hip_score < gaia_score and winner_catalog != "hip"
+    )
+    gaia_ruwe = _safe_float(gaia_rec.get("ruwe"))
+    hip_solution_type = _parse_optional_int(hip_rec.get("Sn"))
+    gaia_ruwe_high = gaia_ruwe > ruwe_threshold
+    hip_non_standard = (
+        hip_solution_type is not None and hip_solution_type != HIP_STANDARD_SOLUTION
+    )
+    severe_distance = distance_ratio >= severe_distance_ratio
+    both_catalogs_suspect = gaia_ruwe_high and hip_non_standard
+    gaia_winner_suspect = gaia_ruwe_high and (hip_non_standard or severe_distance)
+    if not (
+        distance_frac_diff > distance_disagreement_threshold
+        and (winner_not_lowest_score or both_catalogs_suspect or gaia_winner_suspect)
+    ):
+        return None
+
+    reasons = ["distance_disagreement"]
+    if winner_not_lowest_score:
+        reasons.append("winner_not_lowest_astrometry_score")
+    if gaia_ruwe_high:
+        reasons.append("gaia_high_ruwe")
+    if hip_non_standard:
+        reasons.append("hip_non_standard_solution")
+    if severe_distance:
+        reasons.append("severe_distance_disagreement")
+    severity = (
+        "high"
+        if winner_not_lowest_score or both_catalogs_suspect or severe_distance
+        else "medium"
+    )
+
+    gaia_xyz = [_safe_float(gaia_rec.get(name)) for name in _XYZ_COLUMNS]
+    hip_xyz = [_safe_float(hip_rec.get(name)) for name in _XYZ_COLUMNS]
+    if all(math.isfinite(value) for value in [*gaia_xyz, *hip_xyz]):
+        spatial_separation_pc = math.sqrt(
+            sum((gaia - hip) ** 2 for gaia, hip in zip(gaia_xyz, hip_xyz, strict=True))
+        )
+    else:
+        spatial_separation_pc = math.nan
+
+    gaia_mag_abs = _safe_float(gaia_rec.get("mag_abs"))
+    hip_mag_abs = _safe_float(hip_rec.get("mag_abs"))
+    mag_abs_delta = gaia_mag_abs - hip_mag_abs
+    gaia_apparent_mag = _apparent_magnitude(gaia_mag_abs, gaia_r)
+    hip_apparent_mag = _apparent_magnitude(hip_mag_abs, hip_r)
+
+    gaia_id = _string_id(gaia_rec.get("source_id"))
+    hip_id = _string_id(hip_rec.get("source_id"))
+    return _issue_record(
+        issue_type="matched_pair_conflict",
+        severity=severity,
+        reasons=reasons,
+        source="hip",
+        source_id=hip_id,
+        gaia_source_id=gaia_id,
+        hip_source_id=hip_id,
+        winner_catalog=winner_catalog,
+        winner_source_id=winner_source_id,
+        tie_break_reason=tie_break_reason or pd.NA,
+        distance_ratio=distance_ratio,
+        distance_frac_diff=distance_frac_diff,
+        spatial_separation_pc=spatial_separation_pc,
+        mag_abs_delta=mag_abs_delta,
+        apparent_mag_delta=gaia_apparent_mag - hip_apparent_mag,
+        gaia_apparent_mag=gaia_apparent_mag,
+        hip_apparent_mag=hip_apparent_mag,
+        gaia_r_pc=gaia_r,
+        hip_r_pc=hip_r,
+        gaia_mag_abs=gaia_mag_abs,
+        hip_mag_abs=hip_mag_abs,
+        gaia_score=gaia_score,
+        hip_score=hip_score,
+        gaia_ruwe=gaia_ruwe,
+        hip_solution_type=hip_solution_type,
+        number_of_neighbours=number_of_neighbours,
+        angular_distance_arcsec=angular_distance_arcsec,
+    )
+
+
+_XYZ_COLUMNS = ("x_icrs_pc", "y_icrs_pc", "z_icrs_pc")
+
+
+def _iter_merged_row_issue_records(
+    batch: pd.DataFrame,
+    *,
+    override_keys: set[tuple[str, str]],
+    high_astrometry_quality: float,
+    extreme_abs_mag: float,
+    luminous_abs_mag: float,
+    remote_luminous_pc: float,
+) -> Iterator[dict[str, Any]]:
+    if batch.empty:
+        return
+
+    # These fixed-size numeric arrays are bounded by the merge batch. Crucially,
+    # the override lookup and Python record creation happen only for candidates,
+    # not for every row in the catalogue.
+    mag_abs = pd.to_numeric(batch["mag_abs"], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    r_pc = pd.to_numeric(batch["r_pc"], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    astro_q = pd.to_numeric(batch["astrometry_quality"], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    extreme = mag_abs <= extreme_abs_mag
+    low_quality_luminous = (mag_abs <= luminous_abs_mag) & (
+        astro_q >= high_astrometry_quality
+    )
+    remote_luminous = (mag_abs <= luminous_abs_mag) & (r_pc >= remote_luminous_pc)
+
+    for position in np.flatnonzero(extreme | low_quality_luminous | remote_luminous):
+        pos = int(position)
+        source = str(batch["source"].iloc[pos])
+        source_id = str(batch["source_id"].iloc[pos])
+        if (source, source_id) in override_keys:
+            continue
+
+        reasons = []
+        if extreme[pos]:
+            reasons.append("extreme_absolute_magnitude")
+        if low_quality_luminous[pos]:
+            reasons.append("low_quality_astrometry_for_luminous_row")
+        if remote_luminous[pos]:
+            reasons.append("remote_luminous_row")
+        yield _issue_record(
+            issue_type="merged_row_extreme",
+            severity="high" if extreme[pos] else "medium",
+            reasons=reasons,
+            source=source,
+            source_id=source_id,
+            merged_ra_deg=batch["ra_deg"].iloc[pos],
+            merged_dec_deg=batch["dec_deg"].iloc[pos],
+            merged_r_pc=r_pc[pos],
+            merged_mag_abs=mag_abs[pos],
+            merged_teff=batch["teff"].iloc[pos],
+            astrometry_quality=astro_q[pos],
+            photometry_quality=batch["photometry_quality"].iloc[pos],
+        )
 
 
 def _issue_record(
@@ -544,6 +881,38 @@ def _issue_record(
     )
     rec.update(kwargs)
     return rec
+
+
+def _issues_to_table(records: list[dict[str, Any]]) -> pa.Table:
+    frame = pd.DataFrame(records, columns=QUALITY_ISSUE_COLS)
+    for column in _QUALITY_STRING_COLS:
+        frame[column] = frame[column].astype("string")
+    for column in _QUALITY_BOOL_COLS:
+        frame[column] = frame[column].astype("boolean")
+    for column in set(QUALITY_ISSUE_COLS) - _QUALITY_STRING_COLS - _QUALITY_BOOL_COLS:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    return pa.Table.from_pandas(
+        frame,
+        schema=QUALITY_ISSUE_SCHEMA,
+        preserve_index=False,
+        safe=False,
+    )
+
+
+def _safe_score(value: Any) -> float:
+    score = _safe_float(value)
+    return score if math.isfinite(score) and score >= 0.0 else math.inf
+
+
+def _parse_optional_int(value: Any) -> int | None:
+    parsed = _parse_uint(value)
+    return None if pd.isna(parsed) else int(parsed)
+
+
+def _apparent_magnitude(mag_abs: float, r_pc: float) -> float:
+    if not math.isfinite(mag_abs) or not math.isfinite(r_pc) or r_pc <= 0.0:
+        return math.nan
+    return mag_abs + 5.0 * math.log10(r_pc / 10.0)
 
 
 def _read_matching_rows(

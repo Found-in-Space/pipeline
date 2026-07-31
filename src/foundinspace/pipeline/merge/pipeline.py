@@ -31,6 +31,17 @@ from foundinspace.pipeline.merge.overrides import (
     gaia_special_ids_for_overrides,
     split_override_rows,
 )
+from foundinspace.pipeline.merge.quality_report import (
+    DEFAULT_DISTANCE_DISAGREEMENT_THRESHOLD,
+    DEFAULT_EXTREME_ABS_MAG,
+    DEFAULT_HIGH_ASTROMETRY_QUALITY,
+    DEFAULT_ISSUE_BUFFER_ROWS,
+    DEFAULT_LUMINOUS_ABS_MAG,
+    DEFAULT_REMOTE_LUMINOUS_PC,
+    DEFAULT_RUWE_THRESHOLD,
+    DEFAULT_SEVERE_DISTANCE_RATIO,
+    StreamingQualityAudit,
+)
 
 _LOG = logging.getLogger(__name__)
 MERGE_BATCH_SIZE = 1_000_000
@@ -149,6 +160,15 @@ def run_merge(
     sidecar_output_dir: Path | None = None,
     carry_fields: tuple[GaiaCarryField, ...] | None = None,
     healpix_order: int = 3,
+    quality_report: bool = False,
+    distance_disagreement_threshold: float = (DEFAULT_DISTANCE_DISAGREEMENT_THRESHOLD),
+    severe_distance_ratio: float = DEFAULT_SEVERE_DISTANCE_RATIO,
+    ruwe_threshold: float = DEFAULT_RUWE_THRESHOLD,
+    high_astrometry_quality: float = DEFAULT_HIGH_ASTROMETRY_QUALITY,
+    extreme_abs_mag: float = DEFAULT_EXTREME_ABS_MAG,
+    luminous_abs_mag: float = DEFAULT_LUMINOUS_ABS_MAG,
+    remote_luminous_pc: float = DEFAULT_REMOTE_LUMINOUS_PC,
+    quality_issue_buffer_rows: int = DEFAULT_ISSUE_BUFFER_ROWS,
     force: bool = False,
 ) -> MergeReport:
     """Run streaming merge into HEALPix-partitioned output directories."""
@@ -224,6 +244,31 @@ def run_merge(
 
     overrides_df = _read_required_parquet(overrides_path, OVERRIDE_REQUIRED_COLS)
     overrides_by_key, add_overrides = split_override_rows(overrides_df)
+    quality_audit = None
+    if quality_report:
+        override_keys = {
+            (str(rec.source), str(rec.source_id))
+            for rec in overrides_df[["source", "source_id", "action"]].itertuples(
+                index=False
+            )
+            if str(rec.action) in {"replace", "drop", "add"}
+        }
+        quality_audit = StreamingQualityAudit(
+            gaia_dir=gaia_dir,
+            hip_path=hip_path,
+            crossmatch_path=crossmatch_path,
+            overrides_path=overrides_path,
+            merge_dir=output_dir,
+            override_keys=override_keys,
+            distance_disagreement_threshold=distance_disagreement_threshold,
+            severe_distance_ratio=severe_distance_ratio,
+            ruwe_threshold=ruwe_threshold,
+            high_astrometry_quality=high_astrometry_quality,
+            extreme_abs_mag=extreme_abs_mag,
+            luminous_abs_mag=luminous_abs_mag,
+            remote_luminous_pc=remote_luminous_pc,
+            issue_buffer_rows=quality_issue_buffer_rows,
+        )
 
     # Small state only (no per-row unmatched storage).
     write_seq_by_pixel: dict[int, int] = {}
@@ -325,6 +370,8 @@ def run_merge(
             gaia_unmatched_df = gaia_df.loc[~special_mask]
             if not gaia_unmatched_df.empty:
                 out = _prepare_gaia_unmatched(gaia_unmatched_df)
+                if quality_audit is not None:
+                    quality_audit.observe_merged_rows(out)
                 written = shards._write_shards(
                     out,
                     hp=hp,
@@ -476,6 +523,18 @@ def run_merge(
                 _sn = policy._safe_int(hip_rec.get("Sn"))
                 _hmag = policy._safe_float(hip_rec.get("Hpmag"))
                 _ang = policy._safe_float(cross_aux.get("angular_distance", math.nan))
+                if quality_audit is not None:
+                    quality_audit.observe_matched_pair(
+                        gaia_rec,
+                        hip_rec,
+                        winner_catalog=winner_catalog,
+                        winner_source_id=str(
+                            gaia_id if winner_catalog == "gaia" else int(hip_id)
+                        ),
+                        tie_break_reason=tie_break_reason,
+                        number_of_neighbours=n_neighbours,
+                        angular_distance_arcsec=_ang,
+                    )
                 decisions.append(
                     decision_record(
                         decision_type="score",
@@ -510,6 +569,8 @@ def run_merge(
             special_df = pd.DataFrame(
                 special_out_rows, columns=shards.MERGED_OUTPUT_COLS
             )
+            if quality_audit is not None:
+                quality_audit.observe_merged_rows(special_df)
             written = shards._write_shards(
                 special_df,
                 hp=hp,
@@ -602,6 +663,8 @@ def run_merge(
 
     if hip_out_rows:
         hip_out_df = pd.DataFrame(hip_out_rows, columns=shards.MERGED_OUTPUT_COLS)
+        if quality_audit is not None:
+            quality_audit.observe_merged_rows(hip_out_df)
         written = shards._write_shards(
             hip_out_df,
             hp=hp,
@@ -640,6 +703,8 @@ def run_merge(
 
     if add_rows:
         add_df = pd.DataFrame(add_rows, columns=shards.MERGED_OUTPUT_COLS)
+        if quality_audit is not None:
+            quality_audit.observe_merged_rows(add_df)
         written = shards._write_shards(
             add_df,
             hp=hp,
@@ -699,5 +764,8 @@ def run_merge(
     with report_path.open("w", encoding="utf-8") as fp:
         json.dump(report.to_dict(), fp, indent=2, sort_keys=True)
         fp.write("\n")
+
+    if quality_audit is not None:
+        quality_audit.finalize(decisions_rows=report.decisions_rows)
 
     return report

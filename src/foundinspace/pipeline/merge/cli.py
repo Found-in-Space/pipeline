@@ -9,7 +9,11 @@ from foundinspace.pipeline.cli_support import (
 )
 from foundinspace.pipeline.gaia.download.fieldsets import load_gaia_field_sets
 from foundinspace.pipeline.merge.pipeline import run_merge
-from foundinspace.pipeline.merge.quality_report import run_quality_report
+from foundinspace.pipeline.merge.quality_report import (
+    DEFAULT_DISTANCE_DISAGREEMENT_THRESHOLD,
+    DEFAULT_RUWE_THRESHOLD,
+    run_quality_report,
+)
 
 
 @click.group(name="merge")
@@ -25,10 +29,36 @@ def cli():
     default=None,
     help="Override Gaia/HIP crossmatch path; defaults to [gaia-to-hip] output.",
 )
+@click.option(
+    "--quality-report",
+    is_flag=True,
+    default=False,
+    help=(
+        "Capture quality findings inline while rows are already in memory. "
+        "Disabled by default."
+    ),
+)
+@click.option(
+    "--distance-disagreement-threshold",
+    type=float,
+    default=DEFAULT_DISTANCE_DISAGREEMENT_THRESHOLD,
+    show_default=True,
+    help="Inline audit matched-pair fractional distance threshold.",
+)
+@click.option(
+    "--ruwe-threshold",
+    type=float,
+    default=DEFAULT_RUWE_THRESHOLD,
+    show_default=True,
+    help="Inline audit Gaia RUWE threshold.",
+)
 @click.option("--force", "-f", is_flag=True, default=False)
 def build(
     project_path: Path,
     crossmatch_path: Path | None,
+    quality_report: bool,
+    distance_disagreement_threshold: float,
+    ruwe_threshold: float,
     force: bool,
 ) -> None:
     """Run the streaming merge and emit HEALPix-partitioned outputs."""
@@ -67,6 +97,9 @@ def build(
         parameters={
             "force": force,
             "healpix_order": project.merge.healpix_order,
+            "quality_report": quality_report,
+            "distance_disagreement_threshold": distance_disagreement_threshold,
+            "ruwe_threshold": ruwe_threshold,
         },
         inputs={
             "gaia_staged": project.gaia.output_dir,
@@ -88,11 +121,21 @@ def build(
             sidecar_output_dir=project.merge.sidecar_output_dir,
             carry_fields=carry_fields,
             healpix_order=project.merge.healpix_order,
+            quality_report=quality_report,
+            distance_disagreement_threshold=distance_disagreement_threshold,
+            ruwe_threshold=ruwe_threshold,
             force=force,
         )
     click.echo(f"Wrote merged shards under {(output_dir / 'healpix').resolve()}")
     click.echo(f"Wrote sidecars under {project.merge.sidecar_output_dir.resolve()}")
     click.echo(f"Merge report: {(output_dir / 'merge_report.json').resolve()}")
+    if quality_report:
+        click.echo(
+            f"Quality report: {(output_dir / 'merge_quality_report.json').resolve()}"
+        )
+        click.echo(
+            f"Quality issues: {(output_dir / 'merge_quality_issues.parquet').resolve()}"
+        )
     click.echo(
         "Summary: "
         f"emitted={report.rows_emitted_total:,}, "
@@ -108,14 +151,14 @@ def build(
 @click.option(
     "--distance-disagreement-threshold",
     type=float,
-    default=0.25,
+    default=DEFAULT_DISTANCE_DISAGREEMENT_THRESHOLD,
     show_default=True,
     help="Matched-pair fractional distance disagreement threshold.",
 )
 @click.option(
     "--ruwe-threshold",
     type=float,
-    default=1.4,
+    default=DEFAULT_RUWE_THRESHOLD,
     show_default=True,
     help="Gaia RUWE threshold used for suspicious matched-pair reports.",
 )

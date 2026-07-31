@@ -138,8 +138,8 @@ Merged dense output is partitioned by HEALPix pixel:
   healpix/{pixel}/0001.parquet
   merge_report.json
   merge_decisions.parquet
-  merge_quality_report.json
-  merge_quality_issues.parquet
+  merge_quality_report.json       # optional audit output
+  merge_quality_issues.parquet    # optional audit output
 ```
 
 The HEALPix pixel is computed from the winning row's `ra_deg` and `dec_deg`.
@@ -149,17 +149,26 @@ Within-shard row order is not part of this contract.
 run. `merge_decisions.parquet` records matched-pair and override decisions only;
 unmatched Gaia rows are counted in aggregate rather than recorded per-row.
 
-`merge quality-report` writes post-merge audit outputs for suspicious rows and
-decisions. It records radial-distance disagreement, full Cartesian separation,
-and the apparent render magnitude reconstructed from each staged candidate.
+`merge build --quality-report` writes opt-in audit outputs for suspicious rows
+and decisions. It records radial-distance disagreement, full Cartesian
+separation, and the apparent render magnitude reconstructed from each staged
+candidate. Matched pairs are checked at the decision point and merged-row rules
+are checked immediately before each shard write. Findings are flushed through
+a bounded buffer, so no input rescan or catalogue-sized issue list is required.
+Labels remain unset in this inline output because resolving them is
+presentation-only and would add another catalogue dependency to the merge.
+
+`merge quality-report` is a retrospective recovery command for an existing
+merge without inline audit artifacts. It produces the same findings and can
+attach identifier labels, but it must rescan staged Gaia and every merged shard.
 These reports are publication evidence, not replacement inputs or a
 pair-acceptance decision.
 
 ## Sidecars
 
 Identifier data is deliberately sparse and stays out of the dense table. The
-identifier pipeline writes a separate sidecar, and `merge quality-report` uses it
-for labels in audit output.
+identifier pipeline writes a separate sidecar; the retrospective
+`merge quality-report` command can use it for labels in audit output.
 
 Optional Gaia enrichment sidecars are emitted by the merge when Gaia
 carry-through fields were present in staged Gaia data. Those fields follow the

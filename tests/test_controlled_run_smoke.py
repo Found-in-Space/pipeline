@@ -139,8 +139,7 @@ healpix_order = 1
     _invoke(runner, "identifiers", "build", *project_args)
     _invoke(runner, "overrides", "build", *project_args)
     _invoke(runner, "gaia", "build", *project_args)
-    _invoke(runner, "merge", "build", *project_args)
-    _invoke(runner, "merge", "quality-report", *project_args)
+    _invoke(runner, "merge", "build", "--quality-report", *project_args)
 
     assert list((run_dir / "merged/healpix").glob("*/*.parquet"))
     assert (run_dir / "merged/merge_report.json").is_file()
@@ -149,6 +148,8 @@ healpix_order = 1
         json.loads(path.read_text(encoding="utf-8"))
         for path in (run_dir / "provenance").glob("*.json")
     ]
-    assert len(events) == 8
+    assert len(events) == 7
     assert {event["status"] for event in events} == {"succeeded"}
     assert {event["run_id"] for event in events} == {"stars-fixture"}
+    merge_event = next(event for event in events if event["command"] == "merge build")
+    assert merge_event["parameters"]["quality_report"] is True

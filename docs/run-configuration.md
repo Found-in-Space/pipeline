@@ -98,8 +98,19 @@ Build the publication view:
 
 ```bash
 uv run fis-pipeline merge build --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
-uv run fis-pipeline merge quality-report --project /data/fis/runs/stars/stars-small-20260730/pipeline.toml
 ```
+
+Quality reporting is not part of the normal pipeline. To request it for a
+particular build, explicitly add `--quality-report` to the command above. The
+merge then evaluates the audit rules against the staged matched pair and each
+merged output batch while those rows are already in memory. It writes findings
+through a bounded Parquet buffer and does not rescan the staged or merged
+catalogues.
+
+`merge quality-report` remains available only for retrospective recovery when a
+merge was built without inline reporting. It rereads the staged Gaia catalogue
+for matched-pair evidence and scans all merged shards, so it is substantially
+more expensive.
 
 The current merge requires a pre-resolved one-to-one Gaia/Hipparcos map. The
 policy-neutral pairing evidence published by `../catalogs` is intentionally
@@ -245,7 +256,7 @@ run directory plus:
   thresholds, report, and hashes once pairing resolution is implemented;
 - the override YAML paths, Version DOI, original Zenodo ZIP, metadata receipt,
   archive SHA-256, internal checksum manifest, and extracted source hashes;
-- merge report, merge decisions, quality report, and output checksums.
+- merge report, merge decisions, optional quality report, and output checksums.
 
 If `../catalogs` publishes a source or deduplication snapshot, its manifest
 should pin the pipeline SHA, calculation engine, query bundle hashes, and files

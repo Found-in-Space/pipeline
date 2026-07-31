@@ -372,6 +372,8 @@ def test_run_merge_streaming_with_overrides_and_missing_partners(tmp_path: Path)
     assert report_json["hip_path"] == str(hip_path)
     assert report_json["crossmatch_path"] == str(crossmatch_path)
     assert report_json["overrides_path"] == str(overrides_path)
+    assert not (output_dir / "merge_quality_report.json").exists()
+    assert not (output_dir / "merge_quality_issues.parquet").exists()
 
 
 def test_run_merge_rejects_drop_override_with_payload(tmp_path: Path):

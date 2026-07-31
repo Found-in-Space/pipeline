@@ -10,6 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from foundinspace.pipeline.constants import OUTPUT_COLS
+from foundinspace.pipeline.merge.pipeline import run_merge
 from foundinspace.pipeline.merge.quality_report import run_quality_report
 
 
@@ -263,3 +264,146 @@ def test_quality_report_flags_suspicious_non_overridden_rows(tmp_path: Path):
         (merge_dir / "merge_quality_report.json").read_text(encoding="utf-8")
     )
     assert report_json["total_issues"] == 2
+
+
+def test_merge_can_capture_equivalent_quality_report_inline_with_bounded_buffer(
+    tmp_path: Path,
+):
+    gaia_dir = tmp_path / "gaia"
+    hip_path = tmp_path / "hip.parquet"
+    crossmatch_path = tmp_path / "gaia_hip.parquet"
+    overrides_path = tmp_path / "overrides.parquet"
+    merge_dir = tmp_path / "merged"
+
+    gaia_df = pd.DataFrame(
+        [
+            {
+                **_row(
+                    source="gaia",
+                    source_id=101,
+                    r_pc=300.0,
+                    mag_abs=-1.0,
+                    astrometry_quality=0.4,
+                ),
+                "ruwe": 10.0,
+                "phot_g_mean_mag": 5.0,
+            },
+            {
+                **_row(
+                    source="gaia",
+                    source_id=301,
+                    r_pc=100_000.0,
+                    mag_abs=-12.0,
+                    astrometry_quality=50.0,
+                ),
+                "ruwe": 1.0,
+                "phot_g_mean_mag": 8.0,
+            },
+            {
+                **_row(
+                    source="gaia",
+                    source_id=302,
+                    r_pc=10.0,
+                    mag_abs=2.0,
+                    astrometry_quality=0.1,
+                ),
+                "ruwe": 1.0,
+                "phot_g_mean_mag": 8.0,
+            },
+        ]
+    )
+    _write_parquet(gaia_df, gaia_dir / "b1.parquet")
+    hip_df = pd.DataFrame(
+        [
+            {
+                **_row(
+                    source="hip",
+                    source_id=201,
+                    r_pc=100.0,
+                    mag_abs=1.0,
+                    astrometry_quality=0.2,
+                ),
+                "Sn": 55,
+                "Hpmag": 5.2,
+            }
+        ]
+    )
+    _write_parquet(hip_df, hip_path)
+    _write_parquet(
+        pd.DataFrame([{"gaia_source_id": 101, "hip_source_id": 201}]),
+        crossmatch_path,
+    )
+    override = {
+        **_row(
+            source="gaia",
+            source_id="302",
+            r_pc=100_000.0,
+            mag_abs=-12.0,
+            astrometry_quality=50.0,
+        ),
+        "override_id": "manual.gaia302.replace",
+        "action": "replace",
+        "override_reason": "test",
+        "override_policy_version": "v1",
+    }
+    _write_parquet(pd.DataFrame([override]), overrides_path)
+
+    run_merge(
+        gaia_dir=gaia_dir,
+        hip_path=hip_path,
+        crossmatch_path=crossmatch_path,
+        overrides_path=overrides_path,
+        output_dir=merge_dir,
+        healpix_order=1,
+        quality_report=True,
+        quality_issue_buffer_rows=1,
+        force=True,
+    )
+
+    inline_report = json.loads(
+        (merge_dir / "merge_quality_report.json").read_text(encoding="utf-8")
+    )
+    assert inline_report["execution_mode"] == "inline"
+    assert inline_report["matched_pair_issues"] == 1
+    assert inline_report["merged_row_issues"] == 1
+    assert inline_report["total_issues"] == 2
+    assert inline_report["max_buffered_issues"] == 1
+
+    inline_issues = pd.read_parquet(
+        merge_dir / "merge_quality_issues.parquet"
+    ).sort_values(["issue_type", "source_id"])
+    assert set(inline_issues["source_id"].astype(str)) == {"201", "301"}
+    assert "302" not in set(inline_issues["source_id"].astype(str))
+
+    run_quality_report(
+        gaia_dir=gaia_dir,
+        hip_path=hip_path,
+        crossmatch_path=crossmatch_path,
+        overrides_path=overrides_path,
+        merge_dir=merge_dir,
+        force=True,
+    )
+    rescanned_issues = pd.read_parquet(
+        merge_dir / "merge_quality_issues.parquet"
+    ).sort_values(["issue_type", "source_id"])
+    comparison_columns = [
+        "issue_type",
+        "severity",
+        "reasons",
+        "source",
+        "source_id",
+        "gaia_source_id",
+        "hip_source_id",
+        "winner_catalog",
+        "winner_source_id",
+        "distance_ratio",
+        "distance_frac_diff",
+        "spatial_separation_pc",
+        "merged_r_pc",
+        "merged_mag_abs",
+    ]
+    pd.testing.assert_frame_equal(
+        inline_issues[comparison_columns].reset_index(drop=True),
+        rescanned_issues[comparison_columns].reset_index(drop=True),
+        check_dtype=False,
+    )
