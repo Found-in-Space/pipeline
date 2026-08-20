@@ -127,10 +127,15 @@ runs/stars/<run-id>/
     pairing-resolution/
     merged/
   octree/
-    stage00/
-    stage01/
-    stage03-intermediates/
+    routed/
+    prepared/
+    materialized/
+    work/
+    sidecars-work/
   products/
+    stars-v2.octree
+    identifiers-v2.order
+    sidecars/
 ```
 
 The project files resolve paths relative to this directory and pin exact raw,
